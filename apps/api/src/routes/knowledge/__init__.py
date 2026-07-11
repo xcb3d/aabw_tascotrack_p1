@@ -1,0 +1,1 @@
+"""Knowledge search and legacy chat endpoints."""

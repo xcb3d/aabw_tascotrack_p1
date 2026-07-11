@@ -1,0 +1,1 @@
+"""Legacy prototype endpoints (demo-only or deprecated)."""

@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+import uuid
+
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
+
+REQUEST_ID_HEADER = "X-Request-Id"
+REQUEST_ID_STATE_KEY = "request_id"
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Generate or propagate X-Request-Id on every request."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
