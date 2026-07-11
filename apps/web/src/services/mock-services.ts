@@ -20,9 +20,10 @@ const delay = (ms = 180) => new Promise((resolve) => setTimeout(resolve, ms));
 const normalizeDepartment = (value: string) => (value === "HR" ? "Human Resources" : value);
 
 async function getAuthToken(user: User): Promise<string> {
-  const cached = localStorage.getItem(`tasco-jwt-${user.id}`);
-  if (cached) return cached;
+  const token = localStorage.getItem("tasco-token");
+  if (token) return token;
   
+  // Fallback to client-signed token if not logged in
   let deptId = user.department;
   if (user.department === "Human Resources") deptId = "HR";
   if (user.department === "Company") deptId = "COMP";
@@ -33,9 +34,7 @@ async function getAuthToken(user: User): Promise<string> {
   if (user.department === "IT") deptId = "IT";
   if (user.department === "Legal") deptId = "LEG";
   
-  const token = await generateToken(user.id, user.role, deptId);
-  localStorage.setItem(`tasco-jwt-${user.id}`, token);
-  return token;
+  return await generateToken(user.id, user.role, deptId);
 }
 
 export interface IdentityService {
@@ -83,11 +82,43 @@ export const identityService: IdentityService = {
     return allPersonas;
   },
   async getCurrentPersona() {
+    const savedUser = localStorage.getItem("tasco-user");
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        const matched = allPersonas.find((c) => c.id === u.id);
+        if (matched) return matched;
+        
+        return {
+          id: u.id,
+          fullName: u.fullName,
+          department: u.department === "COMP" ? "Company" : (u.department === "HR" ? "Human Resources" : u.department),
+          role: u.role,
+          email: u.email,
+          status: "Active",
+          isAdmin: u.role === "Knowledge Admin"
+        };
+      } catch (e) {
+        console.error("Failed to parse saved user, falling back", e);
+      }
+    }
     return allPersonas.find((user) => user.id === localStorage.getItem(STORAGE_KEYS.persona)) ?? allPersonas[0];
   },
   async switchPersona(id) {
     const persona = allPersonas.find((user) => user.id === id) ?? allPersonas[0];
     localStorage.setItem(STORAGE_KEYS.persona, persona.id);
+    
+    // Auto-update tasco-user and generate a corresponding new token for switching in dev mode
+    const token = await generateToken(persona.id, persona.role, persona.department === "Company" ? "COMP" : (persona.department === "Human Resources" ? "HR" : persona.department));
+    localStorage.setItem("tasco-token", token);
+    localStorage.setItem("tasco-user", JSON.stringify({
+      id: persona.id,
+      fullName: persona.fullName,
+      department: persona.department === "Company" ? "COMP" : (persona.department === "Human Resources" ? "HR" : persona.department),
+      role: persona.role,
+      email: persona.email
+    }));
+    
     window.dispatchEvent(new CustomEvent("tasco-persona-changed", { detail: persona }));
     return persona;
   },

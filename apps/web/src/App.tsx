@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePersona } from "@/hooks/use-persona";
+import { LoginPage } from "@/pages/login-page";
 
 const AssistantPage = lazy(() => import("@/pages/assistant-page").then((module) => ({ default: module.AssistantPage })));
 const LibraryPage = lazy(() => import("@/pages/library-page").then((module) => ({ default: module.LibraryPage })));
@@ -13,6 +14,17 @@ const AccessControlPage = lazy(() => import("@/pages/access-control-page").then(
 function PageFallback() { return <div className="space-y-5"><Skeleton className="h-20 w-2/3"/><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-48 rounded-xl"/>)}</div></div>; }
 
 export default function App() {
+  const token = localStorage.getItem("tasco-token");
+
+  if (!token) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
   const { persona } = usePersona();
   const isKnowledgeAdmin = persona?.isAdmin || persona?.role === "Knowledge Admin";
   const isExecutive = persona?.role === "Executive";
