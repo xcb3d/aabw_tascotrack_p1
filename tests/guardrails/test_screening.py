@@ -186,6 +186,43 @@ class ScreeningTest(unittest.TestCase):
         self.assertNotIn("25000000", result.sanitized_text)
         self.assertEqual(result.sanitized_text, r'{[REDACTED:PAYROLL]')
 
+    def test_truncated_quoted_gross_salary_json_is_denied_and_redacted(self):
+        text = r'{"grossSalary":"25000000'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("PAYROLL",))
+        self.assertEqual(result.codes, ("PAYROLL",))
+        self.assertNotIn("25000000", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, r'{[REDACTED:PAYROLL]')
+
+    def test_truncated_unicode_escaped_gross_salary_json_is_denied_and_redacted(self):
+        text = '{"\\u0067rossSalary":25000000'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("PAYROLL",))
+        self.assertEqual(result.codes, ("PAYROLL",))
+        self.assertNotIn("25000000", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, r'{[REDACTED:PAYROLL]')
+
+    def test_nested_json_string_payroll_is_denied_and_redacted(self):
+        text = r'{"payload":"{\"grossSalary\":25000000}"}'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("PAYROLL",))
+        self.assertEqual(result.codes, ("PAYROLL",))
+        self.assertNotIn("25000000", result.sanitized_text)
+        self.assertNotIn("grossSalary", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, "[REDACTED:PAYROLL]")
+
     def test_truncated_net_salary_json_is_denied_and_redacted(self):
         text = r'{"net_salary":25000000'
 

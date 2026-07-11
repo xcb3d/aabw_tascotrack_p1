@@ -3,6 +3,15 @@ import re
 
 from modules.guardrails.contracts.verdicts import DlpResult, SensitivityVerdict
 
+def _json_key_pattern(key: str) -> str:
+    return "".join(rf"(?:{re.escape(char)}|\\u{ord(char):04x})" for char in key)
+
+
+_PAYROLL_JSON_KEY = "|".join(
+    _json_key_pattern(key) for key in ("grossSalary", "netSalary", "gross_salary", "net_salary", "salary", "payroll")
+)
+
+
 _PATTERNS = (
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")),
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*\Z")),
@@ -13,7 +22,7 @@ _PATTERNS = (
     ("OTP", re.compile(r"(([\"'])otpTransactionId\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
     ("OTP", re.compile(r"((?:\"otpTransactionId\"|'otpTransactionId')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
     ("OTP", re.compile(r"\b(?:otp(?:TransactionId)?|one[- ]time password)\b(?:\s+(?:value|code|id))?\s*(?:[:=]|is)?\s*[A-Za-z0-9-]+", re.IGNORECASE)),
-    ("PAYROLL", re.compile(r"[\"'](?:grossSalary|netSalary|gross_salary|net_salary|salary|payroll)[\"']\s*:\s*\d[\d.,]*", re.IGNORECASE)),
+    ("PAYROLL", re.compile(rf"[\"'](?:{_PAYROLL_JSON_KEY})[\"']\s*:\s*[\"']?\d[\d.,]*", re.IGNORECASE)),
     ("PAYROLL", re.compile(r"\b(?:salary|payroll|wage|lương|luong|bảng lương|bang luong)\b[^\n\r]*\d[\d.,]*(?:\s*(?:vnd|vnđ|usd|đ|dollars?))?", re.IGNORECASE)),
 )
 
@@ -46,16 +55,21 @@ def _json_codes(value) -> tuple[str, ...]:
             seen.add(code)
             codes.append(code)
 
-    def walk(item) -> None:
+    def walk(item, depth: int = 0) -> None:
         if isinstance(item, dict):
             for key, value in item.items():
                 code = _json_key_code(key)
                 if code:
                     add(code)
-                walk(value)
+                walk(value, depth)
         elif isinstance(item, list):
             for value in item:
-                walk(value)
+                walk(value, depth)
+        elif isinstance(item, str) and depth < 3 and item[:1] in "[{":
+            try:
+                walk(json.loads(item), depth + 1)
+            except json.JSONDecodeError:
+                pass
 
     walk(value)
     return tuple(codes)
