@@ -23,6 +23,7 @@ from apps.api.src.routes.governance.governance import router as governance_route
 from apps.api.src.routes.knowledge.search import router as knowledge_router
 from apps.api.src.routes.legacy.index import router as legacy_index_router
 from apps.api.src.routes.legacy.users import router as legacy_router
+from apps.api.src.routes.system.auth import router as auth_router
 from apps.api.src.routes.system.health import router as system_router
 from apps.api.src.schemas.common import ErrorCode
 
@@ -69,6 +70,7 @@ app.add_middleware(AppCodeMiddleware)
 app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(RequestIdMiddleware)
 
+app.include_router(auth_router)
 app.include_router(system_router)
 app.include_router(legacy_router)
 app.include_router(legacy_index_router)

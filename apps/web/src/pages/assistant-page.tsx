@@ -1,27 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import {
-  AlertTriangle,
-  ArrowUp,
-  Bot,
-  Check,
-  FileText,
-  History,
-  LockKeyhole,
-  MessageSquarePlus,
-  PanelRightOpen,
-  Search,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { ClassificationBadge } from "@/components/shared/classification-badge";
-import { PersonaSwitcher } from "@/components/shared/persona-switcher";
 import { usePersona } from "@/hooks/use-persona";
 import { assistantService } from "@/services/mock-services";
 import { readStorage, STORAGE_KEYS, writeStorage } from "@/services/storage";
@@ -34,13 +19,6 @@ const suggestions = [
   "Tôi đang thử việc, tôi có được hoàn ứng chi phí công tác không?",
   "Ưu tiên chiến lược của công ty năm 2026 là gì?",
 ];
-
-const stageIcons = {
-  permission: ShieldCheck,
-  searching: Search,
-  synthesizing: Sparkles,
-  validating: Check,
-} as const;
 
 function CitationPanel({ citations, onClose }: { citations: Citation[]; onClose?: () => void }) {
   const { t } = useTranslation();
@@ -56,7 +34,6 @@ function CitationPanel({ citations, onClose }: { citations: Citation[]; onClose?
 
       {citations.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          <FileText className="mx-auto mb-3 size-7 opacity-40" />
           Nguồn của câu trả lời sẽ xuất hiện tại đây.
         </div>
       ) : (
@@ -192,11 +169,10 @@ export function AssistantPage() {
   return (
     <div className="-m-4 min-h-[calc(100vh-4rem)] sm:-m-6 lg:-m-8 lg:grid lg:min-h-screen lg:grid-cols-[220px_minmax(420px,1fr)_320px] xl:grid-cols-[240px_minmax(520px,1fr)_360px]">
       <aside className="hidden border-r bg-white/70 p-4 lg:flex lg:flex-col">
-        <Button className="w-full justify-start" onClick={newChat}>
-          <MessageSquarePlus /> {t("assistant.newChat")}
+        <Button className="w-full justify-start font-bold text-xs" onClick={newChat}>
+          Cuộc hội thoại mới
         </Button>
         <div className="mt-6 flex items-center gap-2 px-2 text-xs font-bold uppercase tracking-[.15em] text-muted-foreground">
-          <History className="size-3.5" />
           {t("assistant.history")}
         </div>
         <div className="mt-2 space-y-1 overflow-y-auto">
@@ -229,17 +205,23 @@ export function AssistantPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden md:block">
-              <PersonaSwitcher compact />
-            </div>
+            {persona && (
+              <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-700 md:flex">
+                <span className="relative flex h-2 size-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex size-2 rounded-full bg-emerald-500"></span>
+                </span>
+                <span>{persona.fullName}</span>
+                <span className="text-slate-300 font-normal">|</span>
+                <span className="text-slate-500 font-normal">{persona.role}</span>
+              </div>
+            )}
             <Button
               variant="outline"
-              size="icon"
-              className="lg:hidden"
+              className="lg:hidden px-2 text-xs font-semibold"
               onClick={() => setCitationOpen(true)}
             >
-              <PanelRightOpen />
-              <span className="sr-only">Citations</span>
+              Nguồn dẫn
             </Button>
           </div>
         </header>
@@ -248,8 +230,8 @@ export function AssistantPage() {
           <div className="mx-auto max-w-3xl">
             {!active?.messages.length ? (
               <div className="flex min-h-[58vh] flex-col items-center justify-center text-center">
-                <div className="mb-5 grid size-16 place-items-center rounded-2xl bg-[#dcebef] text-primary shadow-[0_12px_35px_rgba(31,83,104,.16)]">
-                  <Bot className="size-8" />
+                <div className="mb-5 grid size-16 place-items-center rounded-2xl bg-[#dcebef] text-primary shadow-[0_12px_35px_rgba(31,83,104,.16)] font-bold text-2xl">
+                  AI
                 </div>
                 <h2 className="font-display text-2xl font-extrabold">{t("assistant.empty")}</h2>
                 <p className="mt-2 max-w-lg text-sm text-muted-foreground">{t("assistant.subtitle")}</p>
@@ -261,7 +243,6 @@ export function AssistantPage() {
                       className="rounded-xl border bg-white p-4 text-left text-sm font-semibold shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
                     >
                       {item}
-                      <ArrowUp className="mt-3 size-4 rotate-45 text-primary" />
                     </button>
                   ))}
                 </div>
@@ -277,13 +258,12 @@ export function AssistantPage() {
                     </div>
                   ) : (
                     <div key={message.id} className="flex gap-3">
-                      <div className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
-                        <Bot className="size-4" />
+                      <div className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-primary font-bold text-xs">
+                        AI
                       </div>
                       <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md border bg-white p-5 shadow-sm">
                         {message.response?.state === "denied" ? (
                           <div className="flex gap-3 text-rose-700">
-                            <LockKeyhole className="mt-0.5 size-5 shrink-0" />
                             <div>
                               <p className="font-bold">Access denied</p>
                               <p className="mt-1 text-sm leading-6 text-rose-700/80">
@@ -293,7 +273,6 @@ export function AssistantPage() {
                           </div>
                         ) : message.response?.state === "insufficient" ? (
                           <div className="flex gap-3 text-amber-800">
-                            <AlertTriangle className="mt-0.5 size-5 shrink-0" />
                             <div>
                               <p className="font-bold">Insufficient evidence</p>
                               <p className="mt-1 text-sm leading-6 text-amber-800/80">
@@ -325,14 +304,13 @@ export function AssistantPage() {
 
                 {mutation.isPending && (
                   <div className="flex gap-3">
-                    <div className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
-                      <Bot className="size-4 animate-pulse" />
+                    <div className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-primary font-bold text-xs animate-pulse">
+                      AI
                     </div>
                     <div className="flex-1 rounded-2xl rounded-tl-md border bg-white p-5">
                       <div className="space-y-3">
                         {(["permission", "searching", "synthesizing", "validating"] as const).map(
                           (item) => {
-                            const Icon = stageIcons[item];
                             const activeStage = stage === item;
                             const done =
                               ["permission", "searching", "synthesizing", "validating"].indexOf(
@@ -353,12 +331,12 @@ export function AssistantPage() {
                               >
                                 <span
                                   className={cn(
-                                    "grid size-7 place-items-center rounded-full bg-muted",
-                                    activeStage && "animate-pulse bg-secondary",
-                                    done && "bg-emerald-50"
+                                    "grid size-7 place-items-center rounded-full bg-muted text-xs",
+                                    activeStage && "animate-pulse bg-secondary text-primary font-bold",
+                                    done && "bg-emerald-50 text-emerald-700 font-bold"
                                   )}
                                 >
-                                  <Icon className="size-3.5" />
+                                  {done ? "✓" : ["permission", "searching", "synthesizing", "validating"].indexOf(item) + 1}
                                 </span>
                                 {t(`assistant.stages.${item}`)}
                               </div>
@@ -391,11 +369,11 @@ export function AssistantPage() {
               />
               <Button
                 size="icon"
-                className="absolute bottom-3 right-3 rounded-xl"
+                className="absolute bottom-3 right-3 rounded-xl px-3 py-1.5 text-xs font-semibold"
                 onClick={() => submit()}
                 disabled={!question.trim() || mutation.isPending}
               >
-                <ArrowUp />
+                Gửi
               </Button>
             </div>
             <p className="mt-2 text-center text-[10px] text-muted-foreground">

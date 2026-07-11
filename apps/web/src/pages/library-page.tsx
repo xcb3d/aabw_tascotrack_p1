@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { BookOpen, CalendarDays, FileText, LockKeyhole, Search, SlidersHorizontal, Unlock, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { ClassificationBadge } from "@/components/shared/classification-badge";
 import { Badge } from "@/components/ui/badge";
@@ -72,13 +71,15 @@ export function LibraryPage() {
     [query.data, search, department, classification]
   );
 
-  const openDocument = (document: Document) => {
+  const openDocument = async (document: Document) => {
     if (persona && permissionService.check(persona, document).allowed) {
-      setSelected(document);
+      const fullDoc = await documentService.get(document.id, persona);
+      setSelected(fullDoc || document);
     } else {
       setLocked(document);
     }
   };
+
 
   const clear = () => {
     setSearch("");
@@ -102,13 +103,12 @@ export function LibraryPage() {
       <Card className="mb-5">
         <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_220px_190px_auto]">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label={t("common.search")}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={`${t("common.search")} ID, tiêu đề, tag...`}
-              className="pl-9"
+              className="pl-3"
             />
           </div>
           <Select value={department} onValueChange={setDepartment}>
@@ -142,24 +142,10 @@ export function LibraryPage() {
             </SelectContent>
           </Select>
           <Button variant="ghost" onClick={clear}>
-            <X />
             Clear
           </Button>
         </CardContent>
       </Card>
-
-      <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <SlidersHorizontal className="size-3.5" />
-        <span>{t("library.accessNote")}</span>
-        <span className="inline-flex items-center gap-1">
-          <Unlock className="size-3.5 text-emerald-600" />
-          {t("library.accessible")}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <LockKeyhole className="size-3.5 text-rose-500" />
-          {t("library.locked")}
-        </span>
-      </div>
 
       {query.isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -169,8 +155,7 @@ export function LibraryPage() {
         </div>
       ) : filtered.length === 0 ? (
         <Card className="border-dashed py-20 text-center">
-          <BookOpen className="mx-auto mb-4 size-9 text-muted-foreground/40" />
-          <p className="font-semibold">{t("library.noResults")}</p>
+          <p className="font-semibold text-muted-foreground">{t("library.noResults")}</p>
         </Card>
       ) : (
         <div className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -183,18 +168,9 @@ export function LibraryPage() {
                 className="group min-h-52 rounded-xl border bg-white p-5 text-left shadow-[0_8px_28px_rgba(35,55,63,.05)] transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <span className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
-                    <FileText className="size-5" />
+                  <span className="text-[10px] font-bold text-primary uppercase">
+                    Tài liệu
                   </span>
-                  {allowed ? (
-                    <span className="grid size-8 place-items-center rounded-full bg-emerald-50 text-emerald-600">
-                      <Unlock className="size-4" />
-                    </span>
-                  ) : (
-                    <span className="grid size-8 place-items-center rounded-full bg-rose-50 text-rose-500">
-                      <LockKeyhole className="size-4" />
-                    </span>
-                  )}
                 </div>
                 <p className="mt-5 font-mono text-[10px] font-bold tracking-wider text-muted-foreground">
                   {document.id}
@@ -207,8 +183,7 @@ export function LibraryPage() {
                   <Badge variant="outline">{document.department}</Badge>
                 </div>
                 <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-                  <CalendarDays className="size-3.5" />
-                  {formatDate(document.metadata.lastUpdated, i18n.language)}
+                  <span>Cập nhật: {formatDate(document.metadata.lastUpdated, i18n.language)}</span>
                 </div>
               </button>
             );
@@ -239,8 +214,8 @@ export function LibraryPage() {
 
       <Dialog open={Boolean(locked)} onOpenChange={(open) => !open && setLocked(null)}>
         <DialogContent className="max-w-md text-center">
-          <div className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-rose-50 text-rose-600">
-            <LockKeyhole className="size-6" />
+          <div className="mx-auto mb-4 font-bold text-rose-600">
+            KHÓA TRUY CẬP
           </div>
           <DialogHeader>
             <DialogTitle>Access denied</DialogTitle>

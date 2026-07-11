@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, LockKeyhole, Play, Shield, Sparkles, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,8 +45,7 @@ export function AccessControlPage() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="size-5 text-primary" />
+            <CardTitle>
               {t("access.matrix")}
             </CardTitle>
           </CardHeader>
@@ -70,14 +68,12 @@ export function AccessControlPage() {
                       <TableCell key={role}>
                         {row[role] === "Allow" ? (
                           <Badge variant="success">
-                            <Check className="mr-1 size-3" />
                             {t("access.allowed")}
                           </Badge>
                         ) : row[role] === "Own" ? (
                           <Badge variant="warning">{t("access.own")}</Badge>
                         ) : (
                           <Badge variant="danger">
-                            <X className="mr-1 size-3" />
                             {t("access.denied")}
                           </Badge>
                         )}
@@ -113,8 +109,7 @@ export function AccessControlPage() {
                   ))}
               </SelectContent>
             </Select>
-            <Button className="mt-3 w-full" onClick={() => void run()} disabled={running}>
-              {running ? <Sparkles className="animate-pulse" /> : <Play />}
+            <Button className="mt-3 w-full font-bold" onClick={() => void run()} disabled={running}>
               {running ? "Evaluating personas..." : t("access.run")}
             </Button>
           </CardContent>
@@ -154,7 +149,6 @@ export function AccessControlPage() {
                   <p className="line-clamp-5 text-sm leading-6">{response.answer}</p>
                 ) : (
                   <div className="flex gap-2 text-sm leading-6 text-rose-700">
-                    <LockKeyhole className="mt-1 size-4 shrink-0" />
                     <span>{t("assistant.denied")}</span>
                   </div>
                 )}

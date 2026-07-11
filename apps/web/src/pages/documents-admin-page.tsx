@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { Archive, CheckCircle2, FileUp, Pencil, RotateCcw, ShieldAlert, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { PageHeader } from "@/components/shared/page-header";
@@ -91,8 +90,8 @@ export function DocumentsAdminPage() {
         <PageHeader eyebrow="Governance" title={t("admin.title")} description={t("admin.subtitle")} />
         <Card className="mx-auto mt-16 max-w-xl border-amber-200 bg-amber-50/70">
           <CardContent className="flex flex-col items-center p-10 text-center">
-            <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-amber-100 text-amber-700">
-              <ShieldAlert className="size-7" />
+            <div className="mb-5 font-bold text-amber-700">
+              YÊU CẦU QUYỀN ADMIN
             </div>
             <h2 className="font-display text-xl font-extrabold">Knowledge Admin required</h2>
             <p className="mt-2 text-sm leading-6 text-amber-900/70">{t("admin.adminOnly")}</p>
@@ -111,11 +110,9 @@ export function DocumentsAdminPage() {
         actions={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => void reset()}>
-              <RotateCcw />
               {t("common.reset")}
             </Button>
             <Button onClick={() => setUploadOpen(true)}>
-              <UploadCloud />
               {t("admin.upload")}
             </Button>
           </div>
@@ -161,12 +158,10 @@ export function DocumentsAdminPage() {
                     <TableCell>
                       <div className="flex justify-end gap-1">
                         <Button size="sm" variant="ghost" onClick={() => setEditing(document)}>
-                          <Pencil />
                           {t("admin.edit")}
                         </Button>
                         {document.status !== "Archived" && (
                           <Button size="sm" variant="ghost" className="text-rose-600" onClick={() => archive.mutate(document.id)}>
-                            <Archive />
                             {t("admin.archive")}
                           </Button>
                         )}
@@ -186,9 +181,6 @@ export function DocumentsAdminPage() {
                 <Card key={job.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <span className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
-                        <CheckCircle2 className="size-5" />
-                      </span>
                       <Badge variant="success">{t(`admin.${job.status}`)}</Badge>
                     </div>
                     <CardTitle className="pt-3">{job.fileName}</CardTitle>
@@ -204,8 +196,7 @@ export function DocumentsAdminPage() {
             ) : (
               <Card className="col-span-full border-dashed">
                 <CardContent className="py-16 text-center text-sm text-muted-foreground">
-                  <FileUp className="mx-auto mb-3 size-8 opacity-40" />
-                  Chưa có ingestion job nào trong phiên demo.
+                  Chưa có Ingestion Job nào trong phiên demo.
                 </CardContent>
               </Card>
             )}

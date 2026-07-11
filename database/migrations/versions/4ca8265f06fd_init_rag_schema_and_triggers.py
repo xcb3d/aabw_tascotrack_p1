@@ -70,6 +70,7 @@ def upgrade() -> None:
         sa.Column('role_en', sa.String(length=64), nullable=False),
         sa.Column('email', sa.String(length=255), nullable=False),
         sa.Column('status', sa.String(length=32), nullable=False, server_default='Active'),
+        sa.Column('password', sa.String(length=255), nullable=False),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('user_id'),
         sa.UniqueConstraint('email'),

@@ -10,8 +10,39 @@ export function PersonaProvider({ children }: { children: ReactNode }) {
   const [persona, setPersona] = useState<User | null>(null);
   const [personas, setPersonas] = useState<User[]>([]);
   const queryClient = useQueryClient();
-  useEffect(() => { void Promise.all([identityService.getCurrentPersona(), identityService.getPersonas()]).then(([current, list]) => { setPersona(current); setPersonas(list); }); }, []);
-  const switchPersona = async (id: string) => { const next = await identityService.switchPersona(id); setPersona(next); await queryClient.invalidateQueries(); };
+
+  const loadPersona = () => {
+    identityService.getCurrentPersona().then((current) => {
+      setPersona(current);
+    });
+  };
+
+  useEffect(() => {
+    identityService.getPersonas().then((list) => {
+      setPersonas(list);
+    });
+    loadPersona();
+
+    const handleAuthChange = () => {
+      loadPersona();
+      queryClient.clear();
+    };
+
+    window.addEventListener("tasco-auth-changed", handleAuthChange);
+    window.addEventListener("storage", handleAuthChange);
+
+    return () => {
+      window.removeEventListener("tasco-auth-changed", handleAuthChange);
+      window.removeEventListener("storage", handleAuthChange);
+    };
+  }, [queryClient]);
+
+  const switchPersona = async (id: string) => {
+    const next = await identityService.switchPersona(id);
+    setPersona(next);
+    await queryClient.invalidateQueries();
+  };
+
   return <PersonaContext.Provider value={{ persona, personas, switchPersona }}>{children}</PersonaContext.Provider>;
 }
 

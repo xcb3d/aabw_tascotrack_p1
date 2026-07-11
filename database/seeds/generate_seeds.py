@@ -3,6 +3,17 @@ import uuid
 import json
 import hashlib
 import openpyxl
+import os
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    key = hashlib.pbkdf2_hmac(
+        'sha256', 
+        password.encode('utf-8'), 
+        salt, 
+        100000
+    )
+    return f"{salt.hex()}:{key.hex()}"
 
 def parse_markdown_table_lines(lines):
     rows = []
@@ -137,11 +148,12 @@ def main():
     for row in user_rows:
         raw_dept = row['department']
         dept_id = dept_name_to_id.get(raw_dept, raw_dept)
+        p_hash = hash_password("tasco123")
         sql_statements.append(
-            f"INSERT INTO users (id, user_id, full_name, department_id, role_en, email, status) VALUES ("
+            f"INSERT INTO users (id, user_id, full_name, department_id, role_en, email, status, password) VALUES ("
             f"gen_random_uuid(), {clean_sql_val(row['user_id'])}, {clean_sql_val(row['full_name'])}, "
             f"'{dept_id}', {clean_sql_val(row['role'])}, "
-            f"{clean_sql_val(row['email'])}, {clean_sql_val(row['status'])});"
+            f"{clean_sql_val(row['email'])}, {clean_sql_val(row['status'])}, '{p_hash}');"
         )
 
     # Insert Documents and Chunks with embeddings
