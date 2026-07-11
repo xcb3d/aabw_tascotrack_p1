@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# JavaScript / web
+node_modules/
+.next/
+dist/
+coverage/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins*
+build/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime and generated artifacts
+logs/
+tmp/
+evaluation/artifacts/*
+!evaluation/artifacts/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

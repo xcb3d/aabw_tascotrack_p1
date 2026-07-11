@@ -1,0 +1,652 @@
+openapi: 3.1.0
+info:
+  title: My Tasco Secure Agentic RAG API
+  version: 1.0.0
+  description: |
+    Full public contract for the current secure RAG prototype and planned Agentic RAG platform.
+    Every operation declares x-implementation-status. Planned operations are contracts, not claims
+    that the current backend implements them. OpenAI is an internal outbound dependency and is
+    never proxied directly to clients.
+  contact:
+    name: My Tasco AI Workspace Team
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local prototype
+  - url: https://hackathon.example.com/mytasco/v1
+    description: Configurable deployment facade
+tags:
+  - {name: System, description: Health and runtime metadata}
+  - {name: Legacy, description: Currently implemented prototype operations}
+  - {name: Chat, description: Planned session and agent-run API}
+  - {name: Actions, description: Planned confirmed-action API}
+  - {name: Documents, description: Knowledge administration}
+  - {name: Governance, description: Audit and policy operations}
+  - {name: Evaluation, description: Quality and security evaluation}
+x-openai-integration:
+  visibility: internal-only
+  endpoint: https://api.openai.com/v1/responses
+  method: POST
+  api: Responses API
+  authentication: managed-secret Bearer key
+  client-access: prohibited
+  store: false
+  zdr-required-for-sensitive-production: true
+  default-quality-model: gpt-5.6-sol
+  simple-route-evaluation-model: gpt-5.6-terra
+  hosted-tools-default: disabled
+x-current-prototype-gaps:
+  - Production Bearer/IAM enforcement is not implemented; demo identity headers are still accepted.
+  - Prototype HTTPException responses use the COP envelope with body.error instead of the target ErrorEnvelope.
+  - Audit is in memory and the vector store uses local NumPy/SQLite files.
+  - Session/run/action state-machine endpoints are planned and are not implemented.
+  - The current OpenAI path already uses Responses API with store false and a safety identifier, but still needs strict structured output, manifest evidence IDs, bounded timeouts, and policy-safe failure semantics.
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Get backend and retrieval health
+      x-implementation-status: implemented-prototype
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Health information
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HealthEnvelope'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /mytasco/v1/aiwsp/users:
+    get:
+      tags: [Legacy]
+      operationId: listDemoUsers
+      summary: List synthetic users
+      description: Development/demo inventory only; this endpoint must be disabled in production.
+      x-implementation-status: implemented-demo-only
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200': {description: Synthetic user inventory, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /mytasco/v1/aiwsp/documents:
+    get:
+      tags: [Documents, Legacy]
+      operationId: listDocuments
+      summary: List documents visible to the caller
+      x-implementation-status: implemented-demo-inventory
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: Document inventory, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Documents]
+      operationId: createDocument
+      summary: Create document metadata and an ingestion job
+      x-implementation-status: planned
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, title, departmentId, classification]
+              properties:
+                file: {type: string, format: binary}
+                title: {type: string, minLength: 1, maxLength: 300}
+                departmentId: {type: string}
+                classification: {$ref: '#/components/schemas/Classification'}
+                allowedAccess: {type: array, items: {type: string}}
+      responses:
+        '202': {description: Ingestion accepted, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /mytasco/v1/aiwsp/knowledge/search:
+    post:
+      tags: [Legacy]
+      operationId: searchKnowledge
+      summary: ACL-aware enterprise knowledge search
+      x-implementation-status: implemented-prototype
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AppCode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SearchRequest'}
+      responses:
+        '200': {description: Authorized search results, content: {application/json: {schema: {$ref: '#/components/schemas/SearchEnvelope'}}}}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+  /mytasco/v1/aiwsp/assistant/chat:
+    post:
+      tags: [Legacy]
+      operationId: legacyChat
+      summary: Legacy synchronous secure RAG chat
+      description: Compatibility endpoint. New clients should use chat sessions and runs.
+      x-implementation-status: implemented-prototype
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AppCode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LegacyChatRequest'}
+      responses:
+        '200': {description: Validated grounded answer, content: {application/json: {schema: {$ref: '#/components/schemas/LegacyChatEnvelope'}}}}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /mytasco/v1/aiwsp/chat/sessions:
+    post:
+      tags: [Chat]
+      operationId: createChatSession
+      summary: Create an application-managed chat session
+      x-implementation-status: planned
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AppCode'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                locale: {type: string, default: vi-VN}
+                title: {type: string, maxLength: 200}
+      responses:
+        '201': {description: Session created, content: {application/json: {schema: {$ref: '#/components/schemas/SessionEnvelope'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /mytasco/v1/aiwsp/chat/runs:
+    post:
+      tags: [Chat]
+      operationId: createAgentRun
+      summary: Start a secure deterministic, RAG, agentic-read, or action-preview run
+      x-implementation-status: planned
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/AppCode'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AgentRunRequest'}
+      responses:
+        '202': {description: Run accepted, content: {application/json: {schema: {$ref: '#/components/schemas/AgentRunEnvelope'}}}}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+  /mytasco/v1/aiwsp/chat/runs/{runId}:
+    get:
+      tags: [Chat]
+      operationId: getAgentRun
+      summary: Get a run owned by the current subject
+      x-implementation-status: planned
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Current run state or validated result, content: {application/json: {schema: {$ref: '#/components/schemas/AgentRunEnvelope'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /mytasco/v1/aiwsp/chat/runs/{runId}/events:
+    get:
+      tags: [Chat]
+      operationId: streamAgentRunEvents
+      summary: Stream high-level run status events
+      description: Streams status only. The final validated answer is emitted exactly once after validation.
+      x-implementation-status: planned
+      parameters:
+        - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Server-sent events
+          content:
+            text/event-stream:
+              schema: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /mytasco/v1/aiwsp/chat/runs/{runId}/cancel:
+    post:
+      tags: [Chat]
+      operationId: cancelAgentRun
+      summary: Cancel an active run
+      x-implementation-status: planned
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Run cancelled or already terminal, content: {application/json: {schema: {$ref: '#/components/schemas/AgentRunEnvelope'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /mytasco/v1/aiwsp/actions/{actionId}:
+    get:
+      tags: [Actions]
+      operationId: getActionPreview
+      summary: Get immutable action preview
+      x-implementation-status: planned
+      parameters:
+        - {name: actionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Action preview, content: {application/json: {schema: {$ref: '#/components/schemas/ActionEnvelope'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /mytasco/v1/aiwsp/actions/{actionId}/confirm:
+    post:
+      tags: [Actions]
+      operationId: confirmAction
+      summary: Confirm and execute an immutable action
+      x-implementation-status: planned
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - {name: actionId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmationToken]
+              properties:
+                confirmationToken: {type: string, minLength: 20}
+                stepUpToken: {type: string, writeOnly: true}
+      responses:
+        '200': {description: Idempotent execution result, content: {application/json: {schema: {$ref: '#/components/schemas/ActionEnvelope'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '410': {description: Confirmation expired, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+  /mytasco/v1/aiwsp/actions/{actionId}/reject:
+    post:
+      tags: [Actions]
+      operationId: rejectAction
+      summary: Reject an action preview without upstream mutation
+      x-implementation-status: planned
+      parameters:
+        - {name: actionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Action rejected, content: {application/json: {schema: {$ref: '#/components/schemas/ActionEnvelope'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /mytasco/v1/aiwsp/documents/{documentId}/versions:
+    post:
+      tags: [Documents]
+      operationId: createDocumentVersion
+      summary: Upload a new immutable document version
+      x-implementation-status: planned
+      parameters:
+        - {name: documentId, in: path, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                effectiveFrom: {type: string, format: date-time}
+      responses:
+        '202': {description: Version ingestion accepted, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /mytasco/v1/aiwsp/documents/{documentId}/publish:
+    post:
+      tags: [Documents]
+      operationId: publishDocument
+      summary: Publish an ingested and classified document version
+      x-implementation-status: planned
+      parameters:
+        - {name: documentId, in: path, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': {description: Document published, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /mytasco/v1/aiwsp/documents/{documentId}/archive:
+    post:
+      tags: [Documents]
+      operationId: archiveDocument
+      summary: Archive an active document version
+      x-implementation-status: planned
+      parameters:
+        - {name: documentId, in: path, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': {description: Document archived, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /mytasco/v1/aiwsp/permissions/explain:
+    get:
+      tags: [Governance, Legacy]
+      operationId: explainPermission
+      summary: Explain an allow/deny decision without leaking denied metadata
+      x-implementation-status: implemented-prototype
+      parameters:
+        - {name: documentId, in: query, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200': {description: Safe permission explanation, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+  /mytasco/v1/aiwsp/audit/recent:
+    get:
+      tags: [Governance, Legacy]
+      operationId: getRecentAudit
+      summary: Get recent content-free audit events
+      x-implementation-status: implemented-demo-only
+      responses:
+        '200': {description: Audit events, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /mytasco/v1/aiwsp/admin/traces/{traceId}:
+    get:
+      tags: [Governance]
+      operationId: getTrace
+      summary: Get authorized high-level trace without chain-of-thought
+      x-implementation-status: planned
+      parameters:
+        - {name: traceId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Trace metadata, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /mytasco/v1/aiwsp/admin/security-events:
+    get:
+      tags: [Governance]
+      operationId: listSecurityEvents
+      summary: List authorized security events
+      x-implementation-status: planned
+      responses:
+        '200': {description: Security events, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /mytasco/v1/aiwsp/evaluation/public:
+    post:
+      tags: [Evaluation, Legacy]
+      operationId: runPublicEvaluation
+      summary: Run the provided public evaluation set
+      x-implementation-status: implemented-prototype
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: {type: integer, minimum: 1, maximum: 50}
+      responses:
+        '200': {description: Evaluation results, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+  /mytasco/v1/aiwsp/evaluations/runs:
+    post:
+      tags: [Evaluation]
+      operationId: createEvaluationRun
+      summary: Start a versioned quality/security evaluation
+      x-implementation-status: planned
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [datasetId]
+              properties:
+                datasetId: {type: string}
+                candidateConfigId: {type: string}
+                baselineConfigId: {type: string}
+      responses:
+        '202': {description: Evaluation accepted, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+  /mytasco/v1/aiwsp/index/rebuild:
+    post:
+      tags: [Legacy, Documents]
+      operationId: rebuildIndex
+      summary: Rebuild the prototype vector index
+      x-implementation-status: implemented-demo-only
+      responses:
+        '200': {description: Rebuilt index information, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+components:
+  securitySchemes:
+    BearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+    AppCode: {type: apiKey, in: header, name: X-App-Code, description: Must equal MYTASCO}
+  parameters:
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema: {type: string, format: uuid}
+    AppCode:
+      name: X-App-Code
+      in: header
+      required: true
+      schema: {type: string, const: MYTASCO}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128}
+  responses:
+    InvalidRequest: {description: Invalid request, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    Unauthorized: {description: Missing or invalid authentication, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    Forbidden: {description: Authenticated but not authorized, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    NotFound: {description: Resource not found or safely concealed, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    Conflict: {description: Idempotency, confirmation, or resource-version conflict, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    RateLimited: {description: Rate or budget limit exceeded, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+    ServiceUnavailable: {description: Required secure dependency unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+  schemas:
+    Classification:
+      type: string
+      enum: [Public, Internal, Confidential, Restricted]
+    PermissionDecision:
+      type: string
+      enum: [ALLOW, DENY, BLOCKED, NO_AUTHORIZED_SOURCE]
+    RunStatus:
+      type: string
+      enum: [RECEIVED, SENSITIVITY_CHECKED, AUTHORIZED, ROUTED, RETRIEVING, PLANNING, EXECUTING_READ_TOOLS, EVALUATING_EVIDENCE, GENERATING, VALIDATING_OUTPUT, WAITING_CONFIRMATION, EXECUTING_ACTION, COMPLETED, INSUFFICIENT, DENIED, FAILED, CANCELLED]
+    PageInfo:
+      type: object
+      required: [pageSize, currentPage, totalRecord]
+      properties:
+        pageSize: {type: integer, minimum: 1}
+        currentPage: {type: integer, minimum: 0}
+        totalRecord: {type: integer, minimum: 0}
+    ErrorEnvelope:
+      type: object
+      required: [status, code, message, requestId]
+      properties:
+        status: {type: string, const: error}
+        code: {type: string, enum: [invalid_request, unauthorized, forbidden, not_found, conflict, expired, timeout, rate_limited, service_unavailable, internal_error]}
+        message: {type: string}
+        requestId: {type: string}
+    GenericEnvelope:
+      type: object
+      required: [status, message, body, requestId]
+      properties:
+        status: {type: string, const: success}
+        message: {type: string, const: SUCCESS}
+        body: {}
+        requestId: {type: string}
+    HealthEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/GenericEnvelope'}
+        - type: object
+          properties:
+            body:
+              type: object
+              required: [ok, documents, chunks, users, openaiConfigured, retriever]
+              properties:
+                ok: {type: boolean}
+                documents: {type: integer}
+                chunks: {type: integer}
+                users: {type: integer}
+                openaiConfigured: {type: boolean}
+                retriever: {type: object, additionalProperties: true}
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: {type: string, minLength: 1, maxLength: 8000}
+        filters:
+          type: object
+          additionalProperties: false
+          properties:
+            department: {type: string}
+            classification: {$ref: '#/components/schemas/Classification'}
+        pageInfo:
+          type: object
+          properties:
+            pageSize: {type: integer, minimum: 1, maximum: 20, default: 10}
+            currentPage: {type: integer, minimum: 0, default: 0}
+    SearchHit:
+      type: object
+      required: [documentId, chunkId, title, department, classification, section, snippet, score]
+      properties:
+        documentId: {type: string}
+        chunkId: {type: string}
+        title: {type: string}
+        department: {type: string}
+        classification: {$ref: '#/components/schemas/Classification'}
+        section: {type: string}
+        snippet: {type: string}
+        score: {type: number, minimum: 0, maximum: 1}
+        allowedReason: {type: string}
+        piiTypes: {type: array, items: {type: string}}
+    SearchEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/GenericEnvelope'}
+        - type: object
+          properties:
+            body:
+              type: object
+              properties:
+                result: {type: array, items: {$ref: '#/components/schemas/SearchHit'}}
+                pageInfo: {$ref: '#/components/schemas/PageInfo'}
+                permissionDecision: {type: string}
+                likelyPermissionDenied: {type: boolean}
+                deniedMatchCount: {type: integer}
+                dlp: {type: object, additionalProperties: true}
+                roleIdentifier: {type: object, additionalProperties: true}
+    LegacyChatRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message: {type: string, minLength: 1, maxLength: 8000}
+        conversationId: {type: [string, 'null']}
+        mode: {type: string, default: knowledge}
+        stream: {type: boolean, default: false}
+    Citation:
+      type: object
+      required: [documentId, title, section, classification]
+      properties:
+        evidenceId: {type: string}
+        documentId: {type: string}
+        version: {type: string}
+        title: {type: string}
+        section: {type: string}
+        page: {type: [integer, 'null']}
+        classification: {$ref: '#/components/schemas/Classification'}
+    LegacyChatEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/GenericEnvelope'}
+        - type: object
+          properties:
+            body:
+              type: object
+              properties:
+                conversationId: {type: string}
+                answer: {type: string}
+                citations: {type: array, items: {$ref: '#/components/schemas/Citation'}}
+                permissionDecision: {type: string}
+                confidence: {type: string}
+                modelUsed: {type: string}
+                redactionApplied: {type: boolean}
+                dlpCategories: {type: array, items: {type: string}}
+                retrieval: {type: object, additionalProperties: true}
+                roleIdentifier: {type: object, additionalProperties: true}
+    AgentRunRequest:
+      type: object
+      additionalProperties: false
+      required: [sessionId, message, clientRequestId]
+      properties:
+        sessionId: {type: string, format: uuid}
+        message: {type: string, minLength: 1, maxLength: 8000}
+        locale: {type: string, default: vi-VN}
+        mode: {type: string, enum: [auto, knowledge, action_preview], default: auto}
+        clientRequestId: {type: string, format: uuid}
+    Claim:
+      type: object
+      required: [claimId, text, evidenceIds]
+      properties:
+        claimId: {type: string}
+        text: {type: string}
+        evidenceIds: {type: array, minItems: 1, items: {type: string}}
+    AgentRun:
+      type: object
+      required: [runId, traceId, status]
+      properties:
+        runId: {type: string, format: uuid}
+        traceId: {type: string, format: uuid}
+        sessionId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/RunStatus'}
+        route: {type: string, enum: [DETERMINISTIC, SIMPLE_RAG, AGENTIC_READ, CONFIRMED_ACTION]}
+        answer: {type: [string, 'null']}
+        claims: {type: array, items: {$ref: '#/components/schemas/Claim'}}
+        citations: {type: array, items: {$ref: '#/components/schemas/Citation'}}
+        action: {oneOf: [{$ref: '#/components/schemas/ActionPreview'}, {type: 'null'}]}
+        permissionDecision: {$ref: '#/components/schemas/PermissionDecision'}
+        confidence: {type: string, enum: [HIGH, MEDIUM, LOW, NOT_APPLICABLE]}
+        degradedReason: {type: [string, 'null']}
+    AgentRunEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/GenericEnvelope'}
+        - type: object
+          properties:
+            body: {$ref: '#/components/schemas/AgentRun'}
+    SessionEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/GenericEnvelope'}
+        - type: object
+          properties:
+            body:
+              type: object
+              required: [sessionId, createdAt]
+              properties:
+                sessionId: {type: string, format: uuid}
+                createdAt: {type: string, format: date-time}
+                locale: {type: string}
+    ActionPreview:
+      type: object
+      required: [actionId, actionType, status, summary, expiresAt]
+      properties:
+        actionId: {type: string, format: uuid}
+        actionType: {type: string}
+        status: {type: string, enum: [DRAFT, WAITING_CONFIRMATION, CONFIRMED, EXECUTING, COMPLETED, REJECTED, EXPIRED, FAILED]}
+        summary: {type: string}
+        parameters: {type: object, additionalProperties: true}
+        impact: {type: string}
+        expiresAt: {type: string, format: date-time}
+        confirmationToken: {type: string, writeOnly: true}
+    ActionEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/GenericEnvelope'}
+        - type: object
+          properties:
+            body: {$ref: '#/components/schemas/ActionPreview'}
+security:
+  - BearerAuth: []
+    AppCode: []
