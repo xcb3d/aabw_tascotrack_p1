@@ -16,6 +16,7 @@ _PAYROLL_JSON_KEY = "|".join(
 )
 _AUTH_JSON_KEY = "|".join(_json_key_pattern(key) for key in ("apiKey", "api_key", "password", "secret"))
 _OTP_JSON_KEY = _json_key_pattern("otpTransactionId")
+_COOKIE_JSON_KEY = "|".join(_json_key_pattern(key) for key in ("cookie", "cookies", "session", "sessionId", "session_id"))
 _JSON_MAX_DEPTH = 3
 _MALFORMED_STRUCTURED_DATA = "MALFORMED_STRUCTURED_DATA"
 
@@ -30,13 +31,17 @@ _PATTERNS = (
     ("OTP", re.compile(rf"(([\"']){_OTP_JSON_KEY}\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
     ("OTP", re.compile(rf"((?:\"{_OTP_JSON_KEY}\"|'{_OTP_JSON_KEY}')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
     ("OTP", re.compile(r"\b(?:otp(?:TransactionId)?|one[- ]time password)\b(?:\s+(?:value|code|id))?\s*(?:[:=]|is)?\s*[A-Za-z0-9-]+", re.IGNORECASE)),
+    ("COOKIE", re.compile(r"((?:^|\r?\n)\s*(?:Set-)?Cookie\s*:\s*)[^\r\n]+", re.IGNORECASE)),
+    ("COOKIE", re.compile(rf"([\"'](?:{_COOKIE_JSON_KEY})[\"']\s*:\s*)(?:[\"'](?:\\.|[^\"'\\\r\n])*[\"']|[^,}}\r\n]+)", re.IGNORECASE)),
+    ("COOKIE", re.compile(r"(\b(?:cookies?|session(?:[_-]?id)?)\b\s*[:=]\s*)[^\r\n,;]+", re.IGNORECASE)),
     ("PAYROLL", re.compile(rf"[\"'](?:{_PAYROLL_JSON_KEY})[\"']\s*:\s*[\"']?\d[\d.,]*", re.IGNORECASE)),
     ("PAYROLL", re.compile(r"\b(?:salary|payroll|wage|lương|luong|bảng lương|bang luong)\b[^\n\r]*\d[\d.,]*(?:\s*(?:vnd|vnđ|usd|đ|dollars?))?", re.IGNORECASE)),
 )
 
-_VALUE_ONLY_CODES = {"AUTH_TOKEN", "OTP"}
+_VALUE_ONLY_CODES = {"AUTH_TOKEN", "OTP", "COOKIE"}
 _ASSIGNMENT_KEYS = {"apikey", "password", "secret"}
 _OTP_KEYS = {"otptransactionid"}
+_COOKIE_KEYS = {"cookie", "cookies", "session", "sessionid"}
 
 
 def _normalized_key(key: str) -> str:
@@ -49,6 +54,8 @@ def _json_key_code(key: str) -> str | None:
         return "AUTH_TOKEN"
     if normalized in _OTP_KEYS:
         return "OTP"
+    if normalized in _COOKIE_KEYS:
+        return "COOKIE"
     if "salary" in normalized or "payroll" in normalized:
         return "PAYROLL"
     return None

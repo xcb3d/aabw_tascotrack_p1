@@ -18,6 +18,40 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(result.codes, ("BEARER_TOKEN",))
         self.assertEqual(result.sanitized_text, "Authorization: [REDACTED:BEARER_TOKEN]")
 
+    def test_cookie_header_is_blocked_and_redacted(self):
+        text = "Cookie: session=abc123"
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("COOKIE",))
+        self.assertEqual(result.codes, ("COOKIE",))
+        self.assertNotIn("abc123", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, "Cookie: [REDACTED:COOKIE]")
+
+    def test_set_cookie_header_is_blocked_and_redacted(self):
+        text = "Set-Cookie: session=abc123; HttpOnly"
+
+        result = redact(text)
+
+        self.assertEqual(result.codes, ("COOKIE",))
+        self.assertNotIn("abc123", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, "Set-Cookie: [REDACTED:COOKIE]")
+
+    def test_json_cookie_and_session_fields_are_blocked_and_redacted(self):
+        cases = ('{"cookie":"session=abc123"}', '{"sessionId":"abc123"}')
+        for text in cases:
+            with self.subTest(text=text):
+                verdict = sensitivity_gate(text)
+                result = redact(text)
+
+                self.assertFalse(verdict.egress_allowed)
+                self.assertEqual(verdict.codes, ("COOKIE",))
+                self.assertEqual(result.codes, ("COOKIE",))
+                self.assertNotIn("abc123", result.sanitized_text)
+                self.assertEqual(result.sanitized_text, "[REDACTED:COOKIE]")
+
     def test_otp_is_blocked(self):
         text = "Your OTP value is 123456"
 

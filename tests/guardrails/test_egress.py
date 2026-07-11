@@ -43,6 +43,27 @@ class EgressTest(unittest.TestCase):
         self.assertEqual(decision.code, "SENSITIVITY_DENIED")
         self.assertEqual(spy.calls, ())
 
+    def test_cookie_query_causes_zero_spy_calls(self):
+        inspector = self.inspector()
+        spy = inspector.EgressSpy()
+
+        decision = inspector.dispatch_if_allowed("Cookie: session=abc123", (self.segment(),), spy)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+        self.assertEqual(spy.calls, ())
+
+    def test_cookie_segment_causes_zero_spy_calls(self):
+        inspector = self.inspector()
+        spy = inspector.EgressSpy()
+        segments = (self.segment(origin="SANITIZED_QUERY", content="Cookie: session=abc123"),)
+
+        decision = inspector.dispatch_if_allowed("Show today schedule", segments, spy)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+        self.assertEqual(spy.calls, ())
+
     def test_valid_benign_query_causes_one_spy_call(self):
         inspector = self.inspector()
         spy = inspector.EgressSpy()
