@@ -88,6 +88,28 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(result.codes, ("OTP",))
         self.assertEqual(result.sanitized_text, '{"otpTransactionId":"[REDACTED:OTP]"}')
 
+    def test_truncated_quoted_json_password_is_denied_and_redacted(self):
+        text = '{"password":"hunter2'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertNotIn("hunter2", result.sanitized_text)
+        self.assertEqual(result.codes, ("SECRET_ASSIGNMENT",))
+        self.assertEqual(result.sanitized_text, '{"password":[REDACTED:SECRET_ASSIGNMENT]')
+
+    def test_truncated_quoted_json_otp_transaction_id_is_denied_and_redacted(self):
+        text = '{"otpTransactionId":"abc123'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertNotIn("abc123", result.sanitized_text)
+        self.assertEqual(result.codes, ("OTP",))
+        self.assertEqual(result.sanitized_text, '{"otpTransactionId":[REDACTED:OTP]')
+
     def test_incomplete_private_key_redacts_through_end_of_input(self):
         text = "before\n-----BEGIN PRIVATE KEY-----\nabc123\nstill secret"
 
