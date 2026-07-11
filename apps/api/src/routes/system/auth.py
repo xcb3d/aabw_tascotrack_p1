@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta, timezone
+
 import jwt
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.src.config import Settings, get_settings
-from apps.api.src.dependencies import get_db, get_request_id
-from apps.api.src.db.models import User
+from apps.api.src.dependencies import get_request_id
 from apps.api.src.schemas.common import ErrorCode
 
 router = APIRouter(tags=["Auth"])
@@ -20,71 +18,37 @@ class LoginRequest(BaseModel):
     password: str
 
 
-import hashlib
-import hmac
-
-def verify_password(password: str, hashed: str) -> bool:
-    try:
-        salt_hex, key_hex = hashed.split(":")
-        salt = bytes.fromhex(salt_hex)
-        expected_key = bytes.fromhex(key_hex)
-        actual_key = hashlib.pbkdf2_hmac(
-            'sha256', 
-            password.encode('utf-8'), 
-            salt, 
-            100000
-        )
-        return hmac.compare_digest(actual_key, expected_key)
-    except Exception:
-        return False
-
-
 @router.post("/mytasco/v1/auth/login")
 async def login(
     body: LoginRequest,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     request_id: str = Depends(get_request_id),
 ):
-    """Authenticate a user and return a signed JWT token."""
-    # Query user by user_id or email
-    stmt = select(User).where(
-        (User.user_id == body.username) | (User.email == body.username)
-    )
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
-    if not user or not verify_password(body.password, user.password):
+    """Issue a local demo JWT for the AIE1 claim-based identity model."""
+    if not body.username or not body.password:
         raise HTTPException(
             status_code=401,
             detail={
                 "status": "error",
                 "code": ErrorCode.UNAUTHORIZED.value,
-                "message": "Tên đăng nhập hoặc mật khẩu không chính xác",
+                "message": "Username and password are required",
                 "requestId": request_id,
             },
         )
 
-    if user.status != "Active":
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "status": "error",
-                "code": ErrorCode.FORBIDDEN.value,
-                "message": f"User account is not active (status: {user.status})",
-                "requestId": request_id,
-            },
-        )
-
-    # Generate real signed JWT token
+    now = datetime.now(timezone.utc)
     payload = {
-        "sub": user.user_id,
-        "roles": [user.role_en],
-        "departments": [user.department_id],
-        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
-        "iat": datetime.now(timezone.utc),
+        "sub": body.username,
+        "tenant_id": settings.DEFAULT_TENANT_ID,
+        "roles": ["Admin"],
+        "departments": ["HR"],
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
+        "iat": now,
+        "exp": now + timedelta(hours=24),
+        "policy_version": "v1",
     }
-    token = jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+    token = jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
     return {
         "status": "success",
@@ -93,11 +57,11 @@ async def login(
         "body": {
             "token": token,
             "user": {
-                "id": user.user_id,
-                "fullName": user.full_name,
-                "department": user.department_id,
-                "role": user.role_en,
-                "email": user.email,
+                "id": body.username,
+                "fullName": body.username,
+                "department": "HR",
+                "role": "Admin",
+                "email": f"{body.username}@demo.local",
             },
         },
     }

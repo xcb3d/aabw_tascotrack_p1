@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from apps.api.src.config import get_settings
 from apps.api.src.db.models import Base
 
 config = context.config
 
-# Alembic uses a sync driver; strip asyncpg suffix when present.
-_database_url = get_settings().DATABASE_URL.replace("+asyncpg", "")
+_database_url = get_settings().DATABASE_URL
 config.set_main_option("sqlalchemy.url", _database_url)
 
 if config.config_file_name is not None:
@@ -32,20 +34,29 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    """Run migrations with a synchronous Alembic engine.
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
 
-    # TODO: prefer async migration runner once first revision is authored.
-    """
-    connectable = engine_from_config(
+
+async def run_async_migrations() -> None:
+    """Run migrations using the app's async PostgreSQL driver."""
+    connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    """Run migrations against a live database."""
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

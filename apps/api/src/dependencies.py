@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-import dataclasses
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request
+from jwt import PyJWTError
 from redis.asyncio import Redis
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.src.config import Settings, get_settings
-from apps.api.src.db.models import User
 from apps.api.src.db.session import get_db_session
 from apps.api.src.schemas.common import ErrorCode
 from modules.identity.src.subject import SubjectContext, resolve_subject
@@ -49,77 +47,24 @@ def get_request_id(request: Request) -> str:
 
 
 async def get_current_subject(
-    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     settings: Settings = Depends(get_settings),
-    db: AsyncSession = Depends(get_db),
 ) -> SubjectContext:
-    """Resolve the authenticated subject from JWT."""
-    request_id = get_request_id(request)
-    if authorization is None:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "status": "error",
-                "code": ErrorCode.UNAUTHORIZED.value,
-                "message": "Authorization header is missing",
-                "requestId": request_id,
-            },
-        )
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "status": "error",
-                "code": ErrorCode.UNAUTHORIZED.value,
-                "message": "Invalid Authorization header. Expected Bearer <token>",
-                "requestId": request_id,
-            },
-        )
-    token = authorization.split(" ", 1)[1]
+    """Resolve the authenticated subject from JWT.
+
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Bearer token")
     try:
-        subject = resolve_subject(token)
-    except Exception as e:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "status": "error",
-                "code": ErrorCode.UNAUTHORIZED.value,
-                "message": f"Token verification failed: {str(e)}",
-                "requestId": request_id,
-            },
+        return resolve_subject(
+            authorization[7:].strip(),
+            secret=settings.JWT_SECRET,
+            algorithm=settings.JWT_ALGORITHM,
+            issuer=settings.JWT_ISSUER,
+            audience=settings.JWT_AUDIENCE,
         )
-
-    # Query DB to verify user exists and is active
-    stmt = select(User).where(User.user_id == subject.subject_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
-    if not user:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "status": "error",
-                "code": ErrorCode.UNAUTHORIZED.value,
-                "message": f"User '{subject.subject_id}' not found in database",
-                "requestId": request_id,
-            },
-        )
-    if user.status != "Active":
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "status": "error",
-                "code": ErrorCode.FORBIDDEN.value,
-                "message": f"User account is not active (status: {user.status})",
-                "requestId": request_id,
-            },
-        )
-    
-    # Return a new SubjectContext using dataclasses.replace to respect frozen attribute
-    new_attributes = dict(subject.attributes)
-    new_attributes["user_db_id"] = str(user.id)
-    return dataclasses.replace(subject, attributes=new_attributes)
+    except (PyJWTError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired Bearer token") from exc
 
 
 async def require_idempotency_key(
@@ -137,5 +82,5 @@ async def require_idempotency_key(
                 "requestId": request_id,
             },
         )
-    # TODO: check Redis for prior response under this key and return cached result.
+    # Response replay and payload-conflict enforcement are handled by IdempotencyMiddleware.
     return idempotency_key
