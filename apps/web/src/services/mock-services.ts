@@ -1,6 +1,7 @@
 import { allPersonas, documents as seedDocuments, evaluations, knowledgeAdmin } from "@/data";
 import { normalizeText } from "@/lib/utils";
 import { readStorage, STORAGE_KEYS, writeStorage } from "./storage";
+import { generateToken } from "./jwt-helper";
 import type {
   AssistantResponse,
   AssistantState,
@@ -14,8 +15,28 @@ import type {
   User,
 } from "@/types";
 
+const USE_REAL_API = true;
 const delay = (ms = 180) => new Promise((resolve) => setTimeout(resolve, ms));
 const normalizeDepartment = (value: string) => (value === "HR" ? "Human Resources" : value);
+
+async function getAuthToken(user: User): Promise<string> {
+  const cached = localStorage.getItem(`tasco-jwt-${user.id}`);
+  if (cached) return cached;
+  
+  let deptId = user.department;
+  if (user.department === "Human Resources") deptId = "HR";
+  if (user.department === "Company") deptId = "COMP";
+  if (user.department === "Finance") deptId = "FIN";
+  if (user.department === "Operations") deptId = "OPS";
+  if (user.department === "Sales") deptId = "SAL";
+  if (user.department === "Executive") deptId = "EXEC";
+  if (user.department === "IT") deptId = "IT";
+  if (user.department === "Legal") deptId = "LEG";
+  
+  const token = await generateToken(user.id, user.role, deptId);
+  localStorage.setItem(`tasco-jwt-${user.id}`, token);
+  return token;
+}
 
 export interface IdentityService {
   getPersonas(): Promise<User[]>;
@@ -93,15 +114,111 @@ export const permissionService: PermissionService = {
 
 export const documentService: DocumentService = {
   async list() {
+    if (USE_REAL_API) {
+      try {
+        const user = await identityService.getCurrentPersona();
+        const token = await getAuthToken(user);
+        const resp = await fetch("/mytasco/v1/aiwsp/documents?pageSize=100", {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "X-App-Code": "MYTASCO"
+          }
+        });
+        if (!resp.ok) throw new Error("Failed to fetch documents from API");
+        const data = await resp.json();
+        return data.body.map((doc: any) => ({
+          id: doc.documentId,
+          title: doc.title,
+          department: doc.departmentId === "COMP" ? "Company" : (doc.departmentId === "HR" ? "Human Resources" : doc.departmentId),
+          classification: doc.classification as Classification,
+          content: "",
+          metadata: {
+            owner: doc.owner,
+            allowedAccess: doc.allowedAccess,
+            lastUpdated: doc.lastUpdated.slice(0, 10),
+            tags: [],
+            language: "vi",
+            wordCount: doc.wordCount
+          },
+          status: doc.status as "Active" | "Archived"
+        }));
+      } catch (error) {
+        console.error("API list failed, falling back to mock", error);
+      }
+    }
     await delay(60);
     return currentDocuments();
   },
   async get(id, user) {
+    if (USE_REAL_API) {
+      try {
+        const docs = await this.list();
+        const document = docs.find((item) => item.id === id && item.status !== "Archived");
+        return document || null;
+      } catch (error) {
+        console.error("API get failed, falling back to mock", error);
+      }
+    }
     await delay(80);
     const document = currentDocuments().find((item) => item.id === id && item.status !== "Archived");
     return document && permissionService.check(user, document).allowed ? document : null;
   },
   async create(input) {
+    if (USE_REAL_API) {
+      try {
+        const user = await identityService.getCurrentPersona();
+        const token = await getAuthToken(user);
+        const formData = new FormData();
+        // Create a fake file to satisfy the backend UploadFile check
+        const fakeFile = new Blob(["# " + input.title + "\nFake content"], { type: "text/markdown" });
+        formData.append("file", fakeFile, input.fileName || "document.md");
+        formData.append("title", input.title);
+        formData.append("departmentId", input.department === "Company" ? "COMP" : (input.department === "Human Resources" ? "HR" : input.department));
+        formData.append("classification", input.classification);
+        
+        const resp = await fetch("/mytasco/v1/aiwsp/documents", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "X-App-Code": "MYTASCO",
+            "Idempotency-Key": crypto.randomUUID()
+          },
+          body: formData
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          notifyDocuments();
+          return {
+            document: {
+              id: data.body.documentId,
+              title: data.body.title,
+              department: input.department,
+              classification: input.classification,
+              content: "",
+              metadata: {
+                owner: user.id,
+                allowedAccess: "All",
+                lastUpdated: new Date().toISOString().slice(0, 10),
+                tags: [],
+                language: "vi",
+                wordCount: 0
+              },
+              status: "Active"
+            },
+            job: {
+              id: data.body.id,
+              documentId: data.body.documentId,
+              fileName: input.fileName,
+              status: "ready",
+              progress: 100,
+              createdAt: new Date().toISOString()
+            }
+          };
+        }
+      } catch (error) {
+        console.error("API create failed, falling back to mock", error);
+      }
+    }
     const items = currentDocuments();
     const sequence = Math.max(...items.map((item) => Number(item.id.replace(/\D/g, "")) || 0)) + 1;
     const document: Document = {
@@ -160,6 +277,26 @@ export const documentService: DocumentService = {
     return items[index];
   },
   async archive(id) {
+    if (USE_REAL_API) {
+      try {
+        const user = await identityService.getCurrentPersona();
+        const token = await getAuthToken(user);
+        const resp = await fetch(`/mytasco/v1/aiwsp/documents/${id}/archive`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "X-App-Code": "MYTASCO",
+            "Idempotency-Key": crypto.randomUUID()
+          }
+        });
+        if (resp.ok) {
+          notifyDocuments();
+          return { id } as any;
+        }
+      } catch (error) {
+        console.error("API archive failed, falling back to mock", error);
+      }
+    }
     return this.update(id, { status: "Archived" });
   },
   async jobs() {
@@ -222,6 +359,103 @@ async function emit(state: AssistantState, onState?: (state: AssistantState) => 
 
 export const assistantService: AssistantService = {
   async ask(question, user, onState) {
+    if (USE_REAL_API) {
+      try {
+        const token = await getAuthToken(user);
+        
+        // 1. Session check or creation
+        let sessionId = localStorage.getItem("tasco-session-id");
+        if (!sessionId) {
+          await emit("permission", onState);
+          const sessResp = await fetch("/mytasco/v1/aiwsp/chat/sessions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "X-App-Code": "MYTASCO",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ locale: "vi-VN", title: "New Session" })
+          });
+          if (!sessResp.ok) throw new Error("Failed to create session");
+          const sessData = await sessResp.json();
+          sessionId = sessData.body.sessionId;
+          localStorage.setItem("tasco-session-id", sessionId!);
+        }
+
+        // 2. Start Agent Run
+        await emit("searching", onState);
+        const runResp = await fetch("/mytasco/v1/aiwsp/chat/runs", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "X-App-Code": "MYTASCO",
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID()
+          },
+          body: JSON.stringify({
+            sessionId: sessionId,
+            message: question,
+            locale: "vi-VN",
+            mode: "auto",
+            clientRequestId: crypto.randomUUID()
+          })
+        });
+        if (!runResp.ok) throw new Error("Failed to start run");
+        const runData = await runResp.json();
+        const runId = runData.body.runId;
+
+        // 3. Polling Run status
+        let status = runData.body.status;
+        let runResult = runData.body;
+        let attempts = 0;
+        while (status === "RECEIVED" || status === "PROCESSING" || status === "ROUTED" || status === "RETRIEVING") {
+          if (attempts++ > 30) throw new Error("Run polling timed out");
+          await delay(500);
+          
+          if (status === "RECEIVED") await emit("searching", onState);
+          if (status === "ROUTED") await emit("synthesizing", onState);
+          if (status === "RETRIEVING") await emit("validating", onState);
+          
+          const pollResp = await fetch(`/mytasco/v1/aiwsp/chat/runs/${runId}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "X-App-Code": "MYTASCO"
+            }
+          });
+          if (pollResp.ok) {
+            const pollData = await pollResp.json();
+            runResult = pollData.body;
+            status = runResult.status;
+          }
+        }
+
+        let finalState: AssistantState = "complete";
+        if (status === "DENIED") finalState = "denied";
+        if (status === "FAILED" || status === "CANCELLED") finalState = "insufficient";
+
+        await emit(finalState, onState);
+
+        const citations: Citation[] = (runResult.citations || []).map((cit: any) => ({
+          id: cit.evidenceId || crypto.randomUUID(),
+          documentId: cit.documentId,
+          title: cit.title,
+          department: cit.departmentId === "COMP" ? "Company" : (cit.departmentId === "HR" ? "Human Resources" : cit.departmentId),
+          classification: cit.classification as Classification,
+          excerpt: cit.section || ""
+        }));
+
+        return {
+          state: finalState,
+          answer: runResult.answer || "Không thể sinh câu trả lời.",
+          citations: citations,
+          evaluationId: runResult.runId // Map as evaluationId to UI
+        };
+
+      } catch (error) {
+        console.error("Ask API call failed, falling back to mock", error);
+      }
+    }
+
     await emit("permission", onState);
     const evaluation = evaluations.find((item) => normalizeText(item.question) === normalizeText(question));
     if (!evaluation) {
