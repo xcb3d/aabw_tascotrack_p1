@@ -34,7 +34,8 @@ def dispatch_if_allowed(user_query, segments, send):
     snapshot = tuple(segments)
     if not sensitivity_gate(user_query).egress_allowed:
         return EgressDecision(False, "SENSITIVITY_DENIED")
-    if any(not sensitivity_gate(segment.content).egress_allowed for segment in snapshot if segment.origin == "SANITIZED_QUERY"):
+    # ponytail: all segment contents are screened until registry attribution and content hashes can prove trusted origins.
+    if any(not sensitivity_gate(segment.content).egress_allowed for segment in snapshot):
         return EgressDecision(False, "SENSITIVITY_DENIED")
     decision = inspect_egress(snapshot)
     if not decision.allowed:

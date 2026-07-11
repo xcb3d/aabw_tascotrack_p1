@@ -65,6 +65,24 @@ class EgressTest(unittest.TestCase):
         self.assertEqual(decision.code, "SENSITIVITY_DENIED")
         self.assertEqual(spy.calls, ())
 
+    def test_sensitive_allowlisted_segments_deny_before_send(self):
+        inspector = self.inspector()
+        cases = (
+            ("EVIDENCE_CAPSULE", "OTP value is 123456"),
+            ("PROMPT_TEMPLATE", "Bearer abc123"),
+            ("TOOL_DEFINITION", "payroll amount 25000000 VND"),
+        )
+        for origin, content in cases:
+            with self.subTest(origin=origin):
+                spy = inspector.EgressSpy()
+                segments = (self.segment(origin=origin, content=content),)
+
+                decision = inspector.dispatch_if_allowed("Show today schedule", segments, spy)
+
+                self.assertFalse(decision.allowed)
+                self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+                self.assertEqual(spy.calls, ())
+
     def test_empty_segment_list_denies_before_send(self):
         inspector = self.inspector()
         spy = inspector.EgressSpy()
