@@ -51,6 +51,12 @@ class PolicyEngine:
             allowed = (allowed,)
         if allowed and "All" not in allowed and not subject.is_admin:
             principals = {subject.subject_id, *subject.roles, *subject.departments}
+            if any(r in {"Employee", "Manager", "Director", "Executive"} for r in subject.roles):
+                principals.add("All Employees")
+            if department in subject.departments:
+                principals.add("Own Department")
+            if "Executive" in subject.roles:
+                principals.add("Executive Only")
             if not principals.intersection(set(allowed)):
                 return PolicyDecision(PermissionDecision.DENY, "ACL_DENIED", version, decision_id)
         return PolicyDecision(PermissionDecision.ALLOW, "POLICY_ALLOW", version, decision_id)
