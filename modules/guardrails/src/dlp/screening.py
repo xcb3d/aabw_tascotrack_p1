@@ -1,3 +1,4 @@
+import json
 import re
 
 from modules.guardrails.contracts.verdicts import DlpResult, SensitivityVerdict
@@ -6,16 +7,64 @@ _PATTERNS = (
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")),
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*\Z")),
     ("BEARER_TOKEN", re.compile(r"\bBearer\s+[-._~+/=A-Za-z0-9]+", re.IGNORECASE)),
-    ("SECRET_ASSIGNMENT", re.compile(r"(([\"'])(?:api[_-]?key|password|secret)\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
-    ("SECRET_ASSIGNMENT", re.compile(r"((?:\"(?:api[_-]?key|password|secret)\"|'(?:api[_-]?key|password|secret)')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
-    ("SECRET_ASSIGNMENT", re.compile(r"(\b(?:api[_-]?key|password|secret)\b\s*[:=]\s*)[^\r\n,;]+", re.IGNORECASE)),
+    ("AUTH_TOKEN", re.compile(r"(([\"'])(?:api[_-]?key|password|secret)\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
+    ("AUTH_TOKEN", re.compile(r"((?:\"(?:api[_-]?key|password|secret)\"|'(?:api[_-]?key|password|secret)')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
+    ("AUTH_TOKEN", re.compile(r"(\b(?:api[_-]?key|password|secret)\b\s*[:=]\s*)[^\r\n,;]+", re.IGNORECASE)),
     ("OTP", re.compile(r"(([\"'])otpTransactionId\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
     ("OTP", re.compile(r"((?:\"otpTransactionId\"|'otpTransactionId')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
     ("OTP", re.compile(r"\b(?:otp(?:TransactionId)?|one[- ]time password)\b(?:\s+(?:value|code|id))?\s*(?:[:=]|is)?\s*[A-Za-z0-9-]+", re.IGNORECASE)),
     ("PAYROLL", re.compile(r"\b(?:salary|payroll|wage|lương|luong|bảng lương|bang luong)\b[^\n\r]*\d[\d.,]*(?:\s*(?:vnd|vnđ|usd|đ|dollars?))?", re.IGNORECASE)),
 )
 
-_VALUE_ONLY_CODES = {"SECRET_ASSIGNMENT", "OTP"}
+_VALUE_ONLY_CODES = {"AUTH_TOKEN", "OTP"}
+_ASSIGNMENT_KEYS = {"apikey", "password", "secret"}
+_OTP_KEYS = {"otptransactionid"}
+
+
+def _normalized_key(key: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", key.casefold())
+
+
+def _json_key_code(key: str) -> str | None:
+    normalized = _normalized_key(key)
+    if normalized in _ASSIGNMENT_KEYS:
+        return "AUTH_TOKEN"
+    if normalized in _OTP_KEYS:
+        return "OTP"
+    if "salary" in normalized or "payroll" in normalized:
+        return "PAYROLL"
+    return None
+
+
+def _json_codes(value) -> tuple[str, ...]:
+    codes = []
+    seen = set()
+
+    def add(code: str) -> None:
+        if code not in seen:
+            seen.add(code)
+            codes.append(code)
+
+    def walk(item) -> None:
+        if isinstance(item, dict):
+            for key, value in item.items():
+                code = _json_key_code(key)
+                if code:
+                    add(code)
+                walk(value)
+        elif isinstance(item, list):
+            for value in item:
+                walk(value)
+
+    walk(value)
+    return tuple(codes)
+
+
+def _decoded_json_codes(text: str) -> tuple[str, ...]:
+    try:
+        return _json_codes(json.loads(text))
+    except json.JSONDecodeError:
+        return ()
 
 
 def _replacement(code: str):
@@ -31,6 +80,10 @@ def _replacement(code: str):
 
 
 def _codes(text: str) -> tuple[str, ...]:
+    json_codes = _decoded_json_codes(text)
+    if json_codes:
+        return json_codes
+
     found: list[tuple[int, int, str]] = []
     for order, (code, pattern) in enumerate(_PATTERNS):
         for match in pattern.finditer(text):
@@ -51,6 +104,10 @@ def sensitivity_gate(text: str) -> SensitivityVerdict:
 
 def redact(text: str) -> DlpResult:
     codes = _codes(text)
+    if codes and _decoded_json_codes(text):
+        markers = ",".join(f"[REDACTED:{code}]" for code in codes)
+        return DlpResult(sanitized_text=markers, codes=codes)
+
     sanitized = text
     for code, pattern in _PATTERNS:
         sanitized = pattern.sub(_replacement(code), sanitized)
