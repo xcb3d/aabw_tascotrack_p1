@@ -4,23 +4,30 @@ import re
 from modules.guardrails.contracts.verdicts import DlpResult, SensitivityVerdict
 
 def _json_key_pattern(key: str) -> str:
-    return "".join(rf"(?:{re.escape(char)}|\\u{ord(char):04x})" for char in key)
+    def char_pattern(char: str) -> str:
+        escaped = {rf"\\u{ord(variant):04x}" for variant in {char, char.lower(), char.upper()}}
+        return rf"(?:{re.escape(char)}|{'|'.join(sorted(escaped))})"
+
+    return "".join(char_pattern(char) for char in key)
 
 
 _PAYROLL_JSON_KEY = "|".join(
     _json_key_pattern(key) for key in ("grossSalary", "netSalary", "gross_salary", "net_salary", "salary", "payroll")
 )
+_AUTH_JSON_KEY = "|".join(_json_key_pattern(key) for key in ("apiKey", "api_key", "password", "secret"))
+_OTP_JSON_KEY = _json_key_pattern("otpTransactionId")
+_JSON_MAX_DEPTH = 3
 
 
 _PATTERNS = (
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")),
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*\Z")),
     ("BEARER_TOKEN", re.compile(r"\bBearer\s+[-._~+/=A-Za-z0-9]+", re.IGNORECASE)),
-    ("AUTH_TOKEN", re.compile(r"(([\"'])(?:api[_-]?key|password|secret)\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
-    ("AUTH_TOKEN", re.compile(r"((?:\"(?:api[_-]?key|password|secret)\"|'(?:api[_-]?key|password|secret)')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
+    ("AUTH_TOKEN", re.compile(rf"(([\"'])(?:{_AUTH_JSON_KEY})\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
+    ("AUTH_TOKEN", re.compile(rf"((?:\"(?:{_AUTH_JSON_KEY})\"|'(?:{_AUTH_JSON_KEY})')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
     ("AUTH_TOKEN", re.compile(r"(\b(?:api[_-]?key|password|secret)\b\s*[:=]\s*)[^\r\n,;]+", re.IGNORECASE)),
-    ("OTP", re.compile(r"(([\"'])otpTransactionId\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
-    ("OTP", re.compile(r"((?:\"otpTransactionId\"|'otpTransactionId')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
+    ("OTP", re.compile(rf"(([\"']){_OTP_JSON_KEY}\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
+    ("OTP", re.compile(rf"((?:\"{_OTP_JSON_KEY}\"|'{_OTP_JSON_KEY}')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
     ("OTP", re.compile(r"\b(?:otp(?:TransactionId)?|one[- ]time password)\b(?:\s+(?:value|code|id))?\s*(?:[:=]|is)?\s*[A-Za-z0-9-]+", re.IGNORECASE)),
     ("PAYROLL", re.compile(rf"[\"'](?:{_PAYROLL_JSON_KEY})[\"']\s*:\s*[\"']?\d[\d.,]*", re.IGNORECASE)),
     ("PAYROLL", re.compile(r"\b(?:salary|payroll|wage|lương|luong|bảng lương|bang luong)\b[^\n\r]*\d[\d.,]*(?:\s*(?:vnd|vnđ|usd|đ|dollars?))?", re.IGNORECASE)),
@@ -46,6 +53,20 @@ def _json_key_code(key: str) -> str | None:
     return None
 
 
+def _semantic_codes(text: str) -> tuple[str, ...]:
+    found: list[tuple[int, int, str]] = []
+    for order, (code, pattern) in enumerate(_PATTERNS):
+        for match in pattern.finditer(text):
+            found.append((match.start(), order, code))
+    seen = set()
+    codes = []
+    for _, _, code in sorted(found):
+        if code not in seen:
+            seen.add(code)
+            codes.append(code)
+    return tuple(codes)
+
+
 def _json_codes(value) -> tuple[str, ...]:
     codes = []
     seen = set()
@@ -56,20 +77,26 @@ def _json_codes(value) -> tuple[str, ...]:
             codes.append(code)
 
     def walk(item, depth: int = 0) -> None:
+        # ponytail: decoded JSON DLP descends three levels; raise _JSON_MAX_DEPTH if requirements need deeper inspection.
+        if depth > _JSON_MAX_DEPTH:
+            return
         if isinstance(item, dict):
             for key, value in item.items():
                 code = _json_key_code(key)
                 if code:
                     add(code)
-                walk(value, depth)
+                walk(value, depth + 1)
         elif isinstance(item, list):
             for value in item:
-                walk(value, depth)
-        elif isinstance(item, str) and depth < 3 and item[:1] in "[{":
-            try:
-                walk(json.loads(item), depth + 1)
-            except json.JSONDecodeError:
-                pass
+                walk(value, depth + 1)
+        elif isinstance(item, str):
+            for code in _semantic_codes(item):
+                add(code)
+            if depth < _JSON_MAX_DEPTH and item[:1] in "[{":
+                try:
+                    walk(json.loads(item), depth + 1)
+                except json.JSONDecodeError:
+                    pass
 
     walk(value)
     return tuple(codes)
@@ -98,18 +125,7 @@ def _codes(text: str) -> tuple[str, ...]:
     json_codes = _decoded_json_codes(text)
     if json_codes:
         return json_codes
-
-    found: list[tuple[int, int, str]] = []
-    for order, (code, pattern) in enumerate(_PATTERNS):
-        for match in pattern.finditer(text):
-            found.append((match.start(), order, code))
-    seen = set()
-    codes = []
-    for _, _, code in sorted(found):
-        if code not in seen:
-            seen.add(code)
-            codes.append(code)
-    return tuple(codes)
+    return _semantic_codes(text)
 
 
 def sensitivity_gate(text: str) -> SensitivityVerdict:

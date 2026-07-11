@@ -223,6 +223,64 @@ class ScreeningTest(unittest.TestCase):
         self.assertNotIn("grossSalary", result.sanitized_text)
         self.assertEqual(result.sanitized_text, "[REDACTED:PAYROLL]")
 
+    def test_valid_json_decoded_scalar_strings_are_denied_and_redacted(self):
+        cases = (
+            ('{"note":"password\\u003dhunter2"}', "AUTH_TOKEN", "hunter2"),
+            ('{"note":"Your OTP value is \\u0031\\u0032\\u0033\\u0034\\u0035\\u0036"}', "OTP", "123456"),
+            ('{"note":"Salary\\u003a 2500 USD"}', "PAYROLL", "2500"),
+            ('{"note":"-----BEGIN PRIVATE KEY-----\\nabc123"}', "PRIVATE_KEY", "abc123"),
+        )
+        for text, code, secret in cases:
+            with self.subTest(code=code):
+                verdict = sensitivity_gate(text)
+                result = redact(text)
+
+                self.assertFalse(verdict.egress_allowed)
+                self.assertEqual(verdict.codes, (code,))
+                self.assertEqual(result.codes, (code,))
+                self.assertNotIn(secret, result.sanitized_text)
+                self.assertEqual(result.sanitized_text, f"[REDACTED:{code}]")
+
+    def test_valid_json_nested_decoded_bearer_string_is_denied_and_redacted(self):
+        text = '{"outer":"{\\"note\\":\\"Bearer\\\\u0020abcdef123456\\"}"}'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("BEARER_TOKEN",))
+        self.assertEqual(result.codes, ("BEARER_TOKEN",))
+        self.assertEqual(result.sanitized_text, "[REDACTED:BEARER_TOKEN]")
+
+    def test_truncated_unicode_escaped_auth_and_otp_json_keys_are_denied_and_redacted(self):
+        cases = (
+            ('{"\\u0070assword":"hunter2', "AUTH_TOKEN", "hunter2"),
+            ('{"\\u0061piKey":"key-123', "AUTH_TOKEN", "key-123"),
+            ('{"\\u0061pi_key":"key-123', "AUTH_TOKEN", "key-123"),
+            ('{"\\u0073ecret":"shh', "AUTH_TOKEN", "shh"),
+            ('{"\\u006ftpTransactionId":"otp-123', "OTP", "otp-123"),
+        )
+        for text, code, secret in cases:
+            with self.subTest(text=text):
+                verdict = sensitivity_gate(text)
+                result = redact(text)
+
+                self.assertFalse(verdict.egress_allowed)
+                self.assertEqual(verdict.codes, (code,))
+                self.assertEqual(result.codes, (code,))
+                self.assertNotIn(secret, result.sanitized_text)
+
+    def test_json_depth_limit_catches_supported_depth_and_returns_for_deeper_payload(self):
+        supported = '{"a":{"b":{"c":"password=hunter2"}}}'
+        too_deep = "[" * 200 + '"password=hunter2"' + "]" * 200
+
+        supported_result = redact(supported)
+        deep_result = sensitivity_gate(too_deep)
+
+        self.assertEqual(supported_result.codes, ("AUTH_TOKEN",))
+        self.assertEqual(supported_result.sanitized_text, "[REDACTED:AUTH_TOKEN]")
+        self.assertIsInstance(deep_result.egress_allowed, bool)
+
     def test_truncated_net_salary_json_is_denied_and_redacted(self):
         text = r'{"net_salary":25000000'
 
