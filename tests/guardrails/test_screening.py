@@ -1,6 +1,9 @@
+import sys
 import unittest
 
 from modules.guardrails.src.dlp.screening import redact, sensitivity_gate
+
+MALFORMED_STRUCTURED_DATA = "MALFORMED_STRUCTURED_DATA"
 
 
 class ScreeningTest(unittest.TestCase):
@@ -96,8 +99,9 @@ class ScreeningTest(unittest.TestCase):
 
         self.assertFalse(verdict.egress_allowed)
         self.assertNotIn("hunter2", result.sanitized_text)
-        self.assertEqual(result.codes, ("AUTH_TOKEN",))
-        self.assertEqual(result.sanitized_text, '{"password":[REDACTED:AUTH_TOKEN]')
+        self.assertNotIn("password", result.sanitized_text)
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_truncated_quoted_json_otp_transaction_id_is_denied_and_redacted(self):
         text = '{"otpTransactionId":"abc123'
@@ -107,8 +111,9 @@ class ScreeningTest(unittest.TestCase):
 
         self.assertFalse(verdict.egress_allowed)
         self.assertNotIn("abc123", result.sanitized_text)
-        self.assertEqual(result.codes, ("OTP",))
-        self.assertEqual(result.sanitized_text, '{"otpTransactionId":[REDACTED:OTP]')
+        self.assertNotIn("otpTransactionId", result.sanitized_text)
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_incomplete_private_key_redacts_through_end_of_input(self):
         text = "before\n-----BEGIN PRIVATE KEY-----\nabc123\nstill secret"
@@ -181,10 +186,11 @@ class ScreeningTest(unittest.TestCase):
         result = redact(text)
 
         self.assertFalse(verdict.egress_allowed)
-        self.assertEqual(verdict.codes, ("PAYROLL",))
-        self.assertEqual(result.codes, ("PAYROLL",))
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
         self.assertNotIn("25000000", result.sanitized_text)
-        self.assertEqual(result.sanitized_text, r'{[REDACTED:PAYROLL]')
+        self.assertNotIn("grossSalary", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_truncated_quoted_gross_salary_json_is_denied_and_redacted(self):
         text = r'{"grossSalary":"25000000'
@@ -193,10 +199,11 @@ class ScreeningTest(unittest.TestCase):
         result = redact(text)
 
         self.assertFalse(verdict.egress_allowed)
-        self.assertEqual(verdict.codes, ("PAYROLL",))
-        self.assertEqual(result.codes, ("PAYROLL",))
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
         self.assertNotIn("25000000", result.sanitized_text)
-        self.assertEqual(result.sanitized_text, r'{[REDACTED:PAYROLL]')
+        self.assertNotIn("grossSalary", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_truncated_unicode_escaped_gross_salary_json_is_denied_and_redacted(self):
         text = '{"\\u0067rossSalary":25000000'
@@ -205,10 +212,11 @@ class ScreeningTest(unittest.TestCase):
         result = redact(text)
 
         self.assertFalse(verdict.egress_allowed)
-        self.assertEqual(verdict.codes, ("PAYROLL",))
-        self.assertEqual(result.codes, ("PAYROLL",))
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
         self.assertNotIn("25000000", result.sanitized_text)
-        self.assertEqual(result.sanitized_text, r'{[REDACTED:PAYROLL]')
+        self.assertNotIn("grossSalary", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_nested_json_string_payroll_is_denied_and_redacted(self):
         text = r'{"payload":"{\"grossSalary\":25000000}"}'
@@ -252,23 +260,62 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(result.codes, ("BEARER_TOKEN",))
         self.assertEqual(result.sanitized_text, "[REDACTED:BEARER_TOKEN]")
 
+    def test_malformed_escaped_bearer_json_fails_closed_without_raw_input(self):
+        text = '{"note":"Bearer\\u0020abcdef123'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertNotIn("Bearer", result.sanitized_text)
+        self.assertNotIn("abcdef123", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
+
+    def test_malformed_escaped_payroll_json_fails_closed_without_raw_input(self):
+        text = '{"grossSalary":"\\u0032\\u0035\\u0030\\u0030'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertNotIn("grossSalary", result.sanitized_text)
+        self.assertNotIn("u0032", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
+
+    def test_deeply_nested_json_fails_closed_without_throwing_or_raw_input(self):
+        text = "[" * (sys.getrecursionlimit() * 5) + "]" * (sys.getrecursionlimit() * 5)
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
+
     def test_truncated_unicode_escaped_auth_and_otp_json_keys_are_denied_and_redacted(self):
         cases = (
-            ('{"\\u0070assword":"hunter2', "AUTH_TOKEN", "hunter2"),
-            ('{"\\u0061piKey":"key-123', "AUTH_TOKEN", "key-123"),
-            ('{"\\u0061pi_key":"key-123', "AUTH_TOKEN", "key-123"),
-            ('{"\\u0073ecret":"shh', "AUTH_TOKEN", "shh"),
-            ('{"\\u006ftpTransactionId":"otp-123', "OTP", "otp-123"),
+            ('{"\\u0070assword":"hunter2', "hunter2", "\\u0070assword"),
+            ('{"\\u0061piKey":"key-123', "key-123", "\\u0061piKey"),
+            ('{"\\u0061pi_key":"key-123', "key-123", "\\u0061pi_key"),
+            ('{"\\u0073ecret":"shh', "shh", "\\u0073ecret"),
+            ('{"\\u006ftpTransactionId":"otp-123', "otp-123", "\\u006ftpTransactionId"),
         )
-        for text, code, secret in cases:
+        for text, secret, key in cases:
             with self.subTest(text=text):
                 verdict = sensitivity_gate(text)
                 result = redact(text)
 
                 self.assertFalse(verdict.egress_allowed)
-                self.assertEqual(verdict.codes, (code,))
-                self.assertEqual(result.codes, (code,))
+                self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+                self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
                 self.assertNotIn(secret, result.sanitized_text)
+                self.assertNotIn(key, result.sanitized_text)
+                self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_json_depth_limit_catches_supported_depth_and_returns_for_deeper_payload(self):
         supported = '{"a":{"b":{"c":"password=hunter2"}}}'
@@ -288,10 +335,11 @@ class ScreeningTest(unittest.TestCase):
         result = redact(text)
 
         self.assertFalse(verdict.egress_allowed)
-        self.assertEqual(verdict.codes, ("PAYROLL",))
-        self.assertEqual(result.codes, ("PAYROLL",))
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
         self.assertNotIn("25000000", result.sanitized_text)
-        self.assertEqual(result.sanitized_text, r'{[REDACTED:PAYROLL]')
+        self.assertNotIn("net_salary", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_raw_payroll_is_blocked(self):
         verdict = sensitivity_gate("Lương tháng này là 25,000,000 VND")

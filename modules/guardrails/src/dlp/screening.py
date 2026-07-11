@@ -17,6 +17,7 @@ _PAYROLL_JSON_KEY = "|".join(
 _AUTH_JSON_KEY = "|".join(_json_key_pattern(key) for key in ("apiKey", "api_key", "password", "secret"))
 _OTP_JSON_KEY = _json_key_pattern("otpTransactionId")
 _JSON_MAX_DEPTH = 3
+_MALFORMED_STRUCTURED_DATA = "MALFORMED_STRUCTURED_DATA"
 
 
 _PATTERNS = (
@@ -92,21 +93,25 @@ def _json_codes(value) -> tuple[str, ...]:
         elif isinstance(item, str):
             for code in _semantic_codes(item):
                 add(code)
-            if depth < _JSON_MAX_DEPTH and item[:1] in "[{":
+            stripped = item.lstrip()
+            if depth < _JSON_MAX_DEPTH and stripped[:1] in "[{":
                 try:
                     walk(json.loads(item), depth + 1)
-                except json.JSONDecodeError:
-                    pass
+                except (json.JSONDecodeError, RecursionError):
+                    add(_MALFORMED_STRUCTURED_DATA)
 
     walk(value)
     return tuple(codes)
 
 
 def _decoded_json_codes(text: str) -> tuple[str, ...]:
+    stripped = text.lstrip()
+    if stripped[:1] not in "[{":
+        return ()
     try:
         return _json_codes(json.loads(text))
-    except json.JSONDecodeError:
-        return ()
+    except (json.JSONDecodeError, RecursionError):
+        return (_MALFORMED_STRUCTURED_DATA,)
 
 
 def _replacement(code: str):
@@ -135,7 +140,7 @@ def sensitivity_gate(text: str) -> SensitivityVerdict:
 
 def redact(text: str) -> DlpResult:
     codes = _codes(text)
-    if codes and _decoded_json_codes(text):
+    if codes and text.lstrip()[:1] in "[{":
         markers = ",".join(f"[REDACTED:{code}]" for code in codes)
         return DlpResult(sanitized_text=markers, codes=codes)
 
