@@ -295,6 +295,32 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(result.codes, ("BEARER_TOKEN",))
         self.assertEqual(result.sanitized_text, "[REDACTED:BEARER_TOKEN]")
 
+    def test_leading_bom_json_decoded_bearer_string_is_denied_and_redacted(self):
+        text = '﻿{"note":"Bearer\u0020abcdef123"}'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("BEARER_TOKEN",))
+        self.assertEqual(result.codes, ("BEARER_TOKEN",))
+        self.assertNotIn("Bearer", result.sanitized_text)
+        self.assertNotIn("abcdef123", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, "[REDACTED:BEARER_TOKEN]")
+
+    def test_leading_bom_malformed_json_fails_closed_without_raw_input(self):
+        text = '﻿{"note":"Bearer\u0020abcdef123'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertNotIn("Bearer", result.sanitized_text)
+        self.assertNotIn("abcdef123", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
+
     def test_malformed_escaped_bearer_json_fails_closed_without_raw_input(self):
         text = '{"note":"Bearer\\u0020abcdef123'
 

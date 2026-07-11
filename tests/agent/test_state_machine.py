@@ -17,6 +17,19 @@ class StateMachineTest(unittest.TestCase):
         self.assertEqual(state.status, RunStatus.COMPLETED)
         self.assertIs(state.route, ExecutionRoute.DETERMINISTIC)
 
+    def test_deterministic_route_forces_deterministic_budget(self):
+        state = RunState(
+            status=RunStatus.AUTHORIZED,
+            budget=RunBudget(deadline_seconds=30, model_calls=1, tool_calls=0, retrieval_calls=0),
+        )
+
+        routed = transition(state, RunStatus.ROUTED, route=ExecutionRoute.DETERMINISTIC)
+
+        self.assertEqual(routed.budget.deadline_seconds, 3)
+        self.assertEqual(routed.budget.model_calls, 0)
+        self.assertEqual(routed.budget.tool_calls, 0)
+        self.assertEqual(routed.budget.retrieval_calls, 0)
+
     def test_sensitivity_denial(self):
         state = RunState.new()
         state = transition(state, RunStatus.SENSITIVITY_CHECKED)

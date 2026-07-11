@@ -135,6 +135,16 @@ class EgressTest(unittest.TestCase):
         self.assertEqual(decision.code, "SENSITIVITY_DENIED")
         self.assertEqual(spy.calls, ())
 
+    def test_bom_structured_bearer_query_denies_before_send(self):
+        inspector = self.inspector()
+        spy = inspector.EgressSpy()
+
+        decision = inspector.dispatch_if_allowed('﻿{"note":"Bearer\u0020abcdef123"}', (self.segment(),), spy)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+        self.assertEqual(spy.calls, ())
+
     def test_property_backed_segment_is_materialized_once_before_screening_and_send(self):
         inspector = self.inspector()
         spy = inspector.EgressSpy()

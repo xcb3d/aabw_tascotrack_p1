@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from modules.agent.contracts.run import ExecutionRoute, RunState, RunStatus
+from modules.agent.contracts.run import ExecutionRoute, RunBudget, RunState, RunStatus
 
 
 class InvalidTransition(ValueError):
@@ -24,7 +24,7 @@ def transition(state: RunState, target: RunStatus, *, route=None):
     if target is RunStatus.ROUTED:
         if route is not ExecutionRoute.DETERMINISTIC:
             raise InvalidTransition("ROUTED requires DETERMINISTIC route")
-        return replace(state, status=target, route=route)
+        return replace(state, status=target, route=route, budget=RunBudget.deterministic())
 
     if route is not None:
         raise InvalidTransition("route can only be assigned when entering ROUTED")

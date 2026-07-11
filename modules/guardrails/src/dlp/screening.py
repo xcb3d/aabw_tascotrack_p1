@@ -120,12 +120,19 @@ def _json_codes(value) -> tuple[str, ...]:
     return tuple(codes)
 
 
-def _decoded_json_codes(text: str) -> tuple[str, ...]:
+def _structured_text(text: str) -> str | None:
     stripped = text.lstrip()
-    if stripped[:1] not in "[{":
+    if stripped.startswith("﻿"):
+        stripped = stripped[1:]
+    return stripped if stripped[:1] in "[{" else None
+
+
+def _decoded_json_codes(text: str) -> tuple[str, ...]:
+    structured = _structured_text(text)
+    if structured is None:
         return ()
     try:
-        return _json_codes(json.loads(text))
+        return _json_codes(json.loads(structured))
     except (json.JSONDecodeError, RecursionError):
         return (_MALFORMED_STRUCTURED_DATA,)
 
@@ -156,7 +163,7 @@ def sensitivity_gate(text: str) -> SensitivityVerdict:
 
 def redact(text: str) -> DlpResult:
     codes = _codes(text)
-    if codes and text.lstrip()[:1] in "[{":
+    if codes and _structured_text(text) is not None:
         markers = ",".join(f"[REDACTED:{code}]" for code in codes)
         return DlpResult(sanitized_text=markers, codes=codes)
 
