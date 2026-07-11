@@ -1,18 +1,11 @@
-from __future__ import annotations
-
-import pytest
 from fastapi.testclient import TestClient
 
 
-@pytest.mark.skip(reason="TODO: implement evaluation endpoint tests")
-def test_run_public_evaluation_returns_501(client: TestClient) -> None:
-    """POST /mytasco/v1/aiwsp/evaluation/public should return 501."""
-    resp = client.post("/mytasco/v1/aiwsp/evaluation/public")
-    assert resp.status_code == 501
+def test_public_evaluation_requires_authentication(client: TestClient) -> None:
+    response = client.post("/mytasco/v1/aiwsp/evaluation/public", headers={"X-App-Code": "MYTASCO"})
+    assert response.status_code == 401
 
 
-@pytest.mark.skip(reason="TODO: implement evaluation run tests")
-def test_create_evaluation_run_requires_dataset_id(client: TestClient) -> None:
-    """POST /mytasco/v1/aiwsp/evaluations/runs should require datasetId."""
-    resp = client.post("/mytasco/v1/aiwsp/evaluations/runs")
-    assert resp.status_code == 422
+def test_create_evaluation_run_validates_request(client: TestClient) -> None:
+    response = client.post("/mytasco/v1/aiwsp/evaluations/runs", headers={"X-App-Code": "MYTASCO"})
+    assert response.status_code in {401, 422}

@@ -1,18 +1,11 @@
-from __future__ import annotations
-
-import pytest
 from fastapi.testclient import TestClient
 
 
-@pytest.mark.skip(reason="TODO: implement governance endpoint tests")
-def test_explain_permission_returns_501(client: TestClient) -> None:
-    """GET /mytasco/v1/aiwsp/permissions/explain should return 501."""
-    resp = client.get("/mytasco/v1/aiwsp/permissions/explain?documentId=test-doc")
-    assert resp.status_code == 501
+def test_permission_explanation_requires_authentication(client: TestClient) -> None:
+    response = client.get("/mytasco/v1/aiwsp/permissions/explain?documentId=test-doc", headers={"X-App-Code": "MYTASCO"})
+    assert response.status_code == 401
 
 
-@pytest.mark.skip(reason="TODO: implement audit endpoint tests")
-def test_get_recent_audit_returns_501(client: TestClient) -> None:
-    """GET /mytasco/v1/aiwsp/audit/recent should return 501."""
-    resp = client.get("/mytasco/v1/aiwsp/audit/recent")
-    assert resp.status_code == 501
+def test_audit_requires_authentication(client: TestClient) -> None:
+    response = client.get("/mytasco/v1/aiwsp/audit/recent", headers={"X-App-Code": "MYTASCO"})
+    assert response.status_code == 401

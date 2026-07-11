@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "model_id": "Qwen/Qwen3-Reranker-0.6B",
+  "revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473",
+  "execution": "internal_only",
+  "max_input_tokens": 2048,
+  "instruction": "Given a Vietnamese enterprise search query, judge whether the document passage is relevant and can help answer the query"
+}

@@ -1,0 +1,32 @@
+{
+  "allowed_access_counts": {
+    "All": 2,
+    "All Employees": 19,
+    "Executive Only": 5,
+    "Own Department": 14
+  },
+  "chunk_character_count": 54899,
+  "chunk_count": 361,
+  "classification_counts": {
+    "Confidential": 14,
+    "Internal": 19,
+    "Public": 2,
+    "Restricted": 5
+  },
+  "department_counts": {
+    "Company": 5,
+    "Engineering": 5,
+    "Executive Office": 5,
+    "Finance": 5,
+    "HR": 5,
+    "Legal & Compliance": 5,
+    "Operations": 5,
+    "Product": 5
+  },
+  "document_count": 40,
+  "language_counts": {
+    "vi": 40
+  },
+  "quarantine_count": 0,
+  "source": "package/ai_workspace_dataset_vietnamese_participants.xlsm"
+}

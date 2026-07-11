@@ -18,7 +18,7 @@ class ActionPreview(BaseModel):
     parameters: dict[str, Any] | None = None
     impact: str | None = None
     expiresAt: datetime
-    confirmationToken: str | None = Field(default=None, exclude=True)
+    confirmationToken: str | None = None
 
 
 class ActionEnvelope(GenericEnvelope[ActionPreview]):

@@ -1,11 +1,13 @@
-from __future__ import annotations
-
-from apps.api.src.schemas.search import SearchRequest
+from .postgres import PostgresHybridRetriever, PostgresSearchHit
 
 
-async def search(request: SearchRequest, subject_id: str) -> list[dict]:
-    """Search authorized knowledge chunks.
+def build_postgres_retriever(settings, policy=None):
+    from modules.policy.src.engine import PolicyEngine
+    embedder = None
+    if settings.INTERNAL_EMBEDDINGS_ENABLED:
+        from pathlib import Path
+        from modules.knowledge.src.embeddings import Qwen3Embedder, load_embedding_config
+        embedder = Qwen3Embedder(load_embedding_config(Path("config/models/embedding-qwen3-0.6b.json")))
+    return PostgresHybridRetriever(policy or PolicyEngine(), embedder)
 
-    # TODO: apply policy filtering, vector retrieval, reranking, and DLP.
-    """
-    raise NotImplementedError("knowledge.search")
+__all__ = ["PostgresHybridRetriever", "PostgresSearchHit", "build_postgres_retriever"]

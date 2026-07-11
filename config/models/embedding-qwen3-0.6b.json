@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "model_id": "Qwen/Qwen3-Embedding-0.6B",
+  "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+  "execution": "internal_only",
+  "native_dimension": 1024,
+  "output_dimension": 512,
+  "max_input_tokens": 8192,
+  "normalize": true,
+  "distance": "cosine",
+  "storage_type": "halfvec",
+  "query_instruction": "Given a Vietnamese enterprise search query, retrieve relevant authorized passages that answer the query",
+  "document_instruction": null,
+  "classification_policy": {
+    "Public": "embed_internal",
+    "Internal": "embed_internal",
+    "Confidential": "embed_internal",
+    "Restricted": "embed_internal",
+    "Secret": "block"
+  }
+}

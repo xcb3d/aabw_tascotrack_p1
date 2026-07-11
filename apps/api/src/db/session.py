@@ -36,7 +36,12 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield a request-scoped async database session."""
     factory = get_session_factory()
     async with factory() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            if session.in_transaction():
+                await session.rollback()
+            await session.close()
 
 
 async def dispose_engine() -> None:

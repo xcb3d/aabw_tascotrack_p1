@@ -1,0 +1,13 @@
+{
+  "batch_size": 16,
+  "chunk_count": 361,
+  "configured_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+  "device": "cuda",
+  "dimension": 512,
+  "dry_run": false,
+  "model_id": "Qwen/Qwen3-Embedding-0.6B",
+  "output": "database/seeds/aie1/embeddings.jsonl",
+  "resolved_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+  "source": "database/seeds/aie1/chunks.jsonl",
+  "tenant_id": "demo-mytasco"
+}

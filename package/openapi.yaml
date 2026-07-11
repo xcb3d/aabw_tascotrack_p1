@@ -34,19 +34,18 @@ x-openai-integration:
   default-quality-model: gpt-5.6-sol
   simple-route-evaluation-model: gpt-5.6-terra
   hosted-tools-default: disabled
-x-current-prototype-gaps:
-  - Production Bearer/IAM enforcement is not implemented; demo identity headers are still accepted.
-  - Prototype HTTPException responses use the COP envelope with body.error instead of the target ErrorEnvelope.
-  - Audit is in memory and the vector store uses local NumPy/SQLite files.
-  - Session/run/action state-machine endpoints are planned and are not implemented.
-  - The current OpenAI path already uses Responses API with store false and a safety identifier, but still needs strict structured output, manifest evidence IDs, bounded timeouts, and policy-safe failure semantics.
+x-runtime-notes:
+  - Production Bearer JWT enforcement is implemented; an enterprise IAM adapter can replace the local verifier through the identity boundary.
+  - PostgreSQL/pgvector, Redis replay idempotency, durable jobs, manifests, audits, runs, and confirmed actions are implemented.
+  - My Tasco business adapters are deterministic mocks in development and are rejected by production configuration.
+  - Hosted generation remains fail-closed until the deployment explicitly verifies ZDR and enables the OpenAI project/model.
 paths:
   /health:
     get:
       tags: [System]
       operationId: getHealth
       summary: Get backend and retrieval health
-      x-implementation-status: implemented-prototype
+      x-implementation-status: implemented-core
       security: []
       parameters:
         - $ref: '#/components/parameters/RequestId'
@@ -74,7 +73,7 @@ paths:
       tags: [Documents, Legacy]
       operationId: listDocuments
       summary: List documents visible to the caller
-      x-implementation-status: implemented-demo-inventory
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
@@ -87,7 +86,7 @@ paths:
       tags: [Documents]
       operationId: createDocument
       summary: Create document metadata and an ingestion job
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -114,7 +113,7 @@ paths:
       tags: [Legacy]
       operationId: searchKnowledge
       summary: ACL-aware enterprise knowledge search
-      x-implementation-status: implemented-prototype
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/AppCode'
@@ -135,7 +134,7 @@ paths:
       operationId: legacyChat
       summary: Legacy synchronous secure RAG chat
       description: Compatibility endpoint. New clients should use chat sessions and runs.
-      x-implementation-status: implemented-prototype
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/AppCode'
@@ -156,7 +155,7 @@ paths:
       tags: [Chat]
       operationId: createChatSession
       summary: Create an application-managed chat session
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/AppCode'
@@ -178,7 +177,7 @@ paths:
       tags: [Chat]
       operationId: createAgentRun
       summary: Start a secure deterministic, RAG, agentic-read, or action-preview run
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/AppCode'
@@ -199,7 +198,7 @@ paths:
       tags: [Chat]
       operationId: getAgentRun
       summary: Get a run owned by the current subject
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
@@ -214,7 +213,7 @@ paths:
       operationId: streamAgentRunEvents
       summary: Stream high-level run status events
       description: Streams status only. The final validated answer is emitted exactly once after validation.
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
@@ -230,7 +229,7 @@ paths:
       tags: [Chat]
       operationId: cancelAgentRun
       summary: Cancel an active run
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - {name: runId, in: path, required: true, schema: {type: string, format: uuid}}
@@ -242,7 +241,7 @@ paths:
       tags: [Actions]
       operationId: getActionPreview
       summary: Get immutable action preview
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - {name: actionId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
@@ -253,7 +252,7 @@ paths:
       tags: [Actions]
       operationId: confirmAction
       summary: Confirm and execute an immutable action
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - $ref: '#/components/parameters/RequestId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -280,7 +279,7 @@ paths:
       tags: [Actions]
       operationId: rejectAction
       summary: Reject an action preview without upstream mutation
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - {name: actionId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
@@ -291,7 +290,7 @@ paths:
       tags: [Documents]
       operationId: createDocumentVersion
       summary: Upload a new immutable document version
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - {name: documentId, in: path, required: true, schema: {type: string}}
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -313,7 +312,7 @@ paths:
       tags: [Documents]
       operationId: publishDocument
       summary: Publish an ingested and classified document version
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - {name: documentId, in: path, required: true, schema: {type: string}}
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -325,7 +324,7 @@ paths:
       tags: [Documents]
       operationId: archiveDocument
       summary: Archive an active document version
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - {name: documentId, in: path, required: true, schema: {type: string}}
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -337,7 +336,7 @@ paths:
       tags: [Governance, Legacy]
       operationId: explainPermission
       summary: Explain an allow/deny decision without leaking denied metadata
-      x-implementation-status: implemented-prototype
+      x-implementation-status: implemented-core
       parameters:
         - {name: documentId, in: query, required: true, schema: {type: string}}
         - $ref: '#/components/parameters/RequestId'
@@ -348,7 +347,7 @@ paths:
       tags: [Governance, Legacy]
       operationId: getRecentAudit
       summary: Get recent content-free audit events
-      x-implementation-status: implemented-demo-only
+      x-implementation-status: implemented-core
       responses:
         '200': {description: Audit events, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -357,7 +356,7 @@ paths:
       tags: [Governance]
       operationId: getTrace
       summary: Get authorized high-level trace without chain-of-thought
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       parameters:
         - {name: traceId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
@@ -369,7 +368,7 @@ paths:
       tags: [Governance]
       operationId: listSecurityEvents
       summary: List authorized security events
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       responses:
         '200': {description: Security events, content: {application/json: {schema: {$ref: '#/components/schemas/GenericEnvelope'}}}}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -378,7 +377,7 @@ paths:
       tags: [Evaluation, Legacy]
       operationId: runPublicEvaluation
       summary: Run the provided public evaluation set
-      x-implementation-status: implemented-prototype
+      x-implementation-status: implemented-core
       requestBody:
         required: false
         content:
@@ -394,7 +393,7 @@ paths:
       tags: [Evaluation]
       operationId: createEvaluationRun
       summary: Start a versioned quality/security evaluation
-      x-implementation-status: planned
+      x-implementation-status: implemented-core
       requestBody:
         required: true
         content:
