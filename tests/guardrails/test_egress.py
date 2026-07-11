@@ -9,9 +9,9 @@ class EgressTest(unittest.TestCase):
         except ModuleNotFoundError as exc:
             self.fail(f"missing egress inspector module: {exc}")
 
-    def segment(self, origin="PROMPT_TEMPLATE", reference="policy:S11"):
+    def segment(self, origin="PROMPT_TEMPLATE", reference="policy:S11", content="safe content"):
         inspector = self.inspector()
-        return inspector.EgressSegment(origin=origin, content="safe content", reference=reference)
+        return inspector.EgressSegment(origin=origin, content=content, reference=reference)
 
     def test_all_approved_origin_segment_types_allow(self):
         inspector = self.inspector()
@@ -53,6 +53,17 @@ class EgressTest(unittest.TestCase):
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.code, "ALLOWED")
         self.assertEqual(spy.calls, (segments,))
+
+    def test_sensitive_sanitized_query_segment_denies_before_send(self):
+        inspector = self.inspector()
+        spy = inspector.EgressSpy()
+        segments = (self.segment(origin="SANITIZED_QUERY", content="Bearer abc123"),)
+
+        decision = inspector.dispatch_if_allowed("Show today schedule", segments, spy)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+        self.assertEqual(spy.calls, ())
 
     def test_empty_segment_list_denies_before_send(self):
         inspector = self.inspector()

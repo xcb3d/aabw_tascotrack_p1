@@ -31,10 +31,13 @@ def inspect_egress(segments):
 
 
 def dispatch_if_allowed(user_query, segments, send):
+    snapshot = tuple(segments)
     if not sensitivity_gate(user_query).egress_allowed:
         return EgressDecision(False, "SENSITIVITY_DENIED")
-    decision = inspect_egress(segments)
+    if any(not sensitivity_gate(segment.content).egress_allowed for segment in snapshot if segment.origin == "SANITIZED_QUERY"):
+        return EgressDecision(False, "SENSITIVITY_DENIED")
+    decision = inspect_egress(snapshot)
     if not decision.allowed:
         return decision
-    send(segments)
+    send(snapshot)
     return decision
