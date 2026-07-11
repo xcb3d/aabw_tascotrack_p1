@@ -55,6 +55,28 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(result.codes, ("OTP",))
         self.assertEqual(result.sanitized_text, '{"otpTransactionId": "[REDACTED:OTP]"}')
 
+    def test_quoted_json_credential_with_escaped_quote_redacts_full_value(self):
+        text = '{"password":"foo\\"bar"}'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertNotIn("bar", result.sanitized_text)
+        self.assertEqual(result.codes, ("SECRET_ASSIGNMENT",))
+        self.assertEqual(result.sanitized_text, '{"password":"[REDACTED:SECRET_ASSIGNMENT]"}')
+
+    def test_quoted_json_otp_transaction_id_with_escaped_quote_redacts_full_value(self):
+        text = '{"otpTransactionId":"foo\\"bar"}'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertNotIn("bar", result.sanitized_text)
+        self.assertEqual(result.codes, ("OTP",))
+        self.assertEqual(result.sanitized_text, '{"otpTransactionId":"[REDACTED:OTP]"}')
+
     def test_password_assignment_with_whitespace_is_redacted_to_end_of_line(self):
         text = "password=correct horse battery staple\nnext=line"
 
