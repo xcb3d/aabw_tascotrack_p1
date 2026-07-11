@@ -20,8 +20,23 @@ class RetrievalContractTest(unittest.TestCase):
 
         self.assertEqual(request.tenant_id, "tenant-1")
         self.assertEqual(request.policy_decision_id, "decision-1")
+        self.assertEqual(request.query_vector, ())
         with self.assertRaises(FrozenInstanceError):
             request.tenant_id = "tenant-2"
+
+    def test_request_preserves_immutable_query_vector(self):
+        request = RetrievalRequest(
+            tenant_id="tenant-1",
+            subject_id="user-1",
+            purpose="KNOWLEDGE_SEARCH",
+            policy_decision_id="decision-1",
+            query="quy định nghỉ phép",
+            query_vector=(0.6, 0.8),
+        )
+
+        self.assertEqual(request.query_vector, (0.6, 0.8))
+        with self.assertRaises(FrozenInstanceError):
+            request.query_vector = ()
 
     def test_result_keeps_candidates_bound_to_same_policy_decision(self):
         candidate = AuthorizedRetrievalCandidate(

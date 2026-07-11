@@ -8,6 +8,7 @@ class RetrievalRequest:
     purpose: str
     policy_decision_id: str
     query: str
+    query_vector: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
