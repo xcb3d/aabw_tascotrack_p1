@@ -44,15 +44,81 @@ def get_request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "unknown")
 
 
+from apps.api.src.db.models import User
+from sqlalchemy import select
+from modules.identity.src.subject import SubjectContext
+
 async def get_current_subject(
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     settings: Settings = Depends(get_settings),
-) -> dict:
-    """Resolve the authenticated subject from JWT.
+    db: AsyncSession = Depends(get_db),
+) -> SubjectContext:
+    """Resolve the authenticated subject from JWT."""
+    request_id = get_request_id(request)
+    if authorization is None:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "status": "error",
+                "code": ErrorCode.UNAUTHORIZED.value,
+                "message": "Authorization header is missing",
+                "requestId": request_id,
+            },
+        )
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "status": "error",
+                "code": ErrorCode.UNAUTHORIZED.value,
+                "message": "Invalid Authorization header. Expected Bearer <token>",
+                "requestId": request_id,
+            },
+        )
+    token = authorization.split(" ", 1)[1]
+    try:
+        from modules.identity.src.subject import resolve_subject
+        subject = resolve_subject(token)
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "status": "error",
+                "code": ErrorCode.UNAUTHORIZED.value,
+                "message": f"Token verification failed: {str(e)}",
+                "requestId": request_id,
+            },
+        )
 
-    # TODO: validate Bearer JWT with settings.JWT_SECRET and map claims to SubjectContext.
-    """
-    raise NotImplementedError("get_current_subject")
+    # Query DB to verify user exists and is active
+    stmt = select(User).where(User.user_id == subject.subject_id)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "status": "error",
+                "code": ErrorCode.UNAUTHORIZED.value,
+                "message": f"User '{subject.subject_id}' not found in database",
+                "requestId": request_id,
+            },
+        )
+    if user.status != "Active":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "status": "error",
+                "code": ErrorCode.FORBIDDEN.value,
+                "message": f"User account is not active (status: {user.status})",
+                "requestId": request_id,
+            },
+        )
+    # Store user database UUID in attributes (SubjectContext attributes dict is mutable)
+    subject.attributes["user_db_id"] = str(user.id)
+    return subject
 
 
 async def require_idempotency_key(
