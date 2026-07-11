@@ -62,6 +62,12 @@ class StateMachineTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     budget.restrict(deadline_seconds=value)
 
+    def test_budget_restriction_rejects_unknown_limits(self):
+        budget = RunBudget(deadline_seconds=3, model_calls=1, tool_calls=0, retrieval_calls=0)
+
+        with self.assertRaises(ValueError):
+            budget.restrict(tokens=1)
+
 
 if __name__ == "__main__":
     unittest.main()

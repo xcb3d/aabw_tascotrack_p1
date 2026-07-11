@@ -32,8 +32,13 @@ class RunBudget:
         return cls(deadline_seconds=3, model_calls=0, tool_calls=0, retrieval_calls=0)
 
     def restrict(self, **limits):
+        names = ("deadline_seconds", "model_calls", "tool_calls", "retrieval_calls")
+        unknown = set(limits) - set(names)
+        if unknown:
+            raise ValueError(f"unsupported budget restriction: {', '.join(sorted(unknown))}")
+
         values = {}
-        for name in ("deadline_seconds", "model_calls", "tool_calls", "retrieval_calls"):
+        for name in names:
             value = limits.get(name, getattr(self, name))
             if type(value) is not int:
                 raise ValueError(f"{name} must be an integer")
