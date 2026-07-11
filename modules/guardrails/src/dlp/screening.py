@@ -26,6 +26,7 @@ _PATTERNS = (
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")),
     ("PRIVATE_KEY", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*\Z")),
     ("BEARER_TOKEN", re.compile(r"\bBearer\s+[-._~+/=A-Za-z0-9]+", re.IGNORECASE)),
+    ("AUTH_TOKEN", re.compile(r"(\bAuthorization\s*:\s*)Basic\s+\S+", re.IGNORECASE)),
     ("AUTH_TOKEN", re.compile(rf"(([\"'])(?:{_AUTH_JSON_KEY})\2\s*:\s*([\"']))(?:\\.|(?!\3)[^\\\r\n])*(\3)", re.IGNORECASE)),
     ("AUTH_TOKEN", re.compile(rf"((?:\"(?:{_AUTH_JSON_KEY})\"|'(?:{_AUTH_JSON_KEY})')\s*:\s*)(?:\"(?:\\.|[^\"\\\r\n])*|'(?:\\.|[^'\\\r\n])*)(?=\r?\n|\Z)", re.IGNORECASE)),
     ("AUTH_TOKEN", re.compile(r"(\b(?:api[_-]?key|password|secret)\b\s*[:=]\s*)[^\r\n,;]+", re.IGNORECASE)),
@@ -107,12 +108,14 @@ def _json_codes(value) -> tuple[str, ...]:
             for code in _semantic_codes(item):
                 add(code)
             stripped = item.lstrip()
-            if stripped[:1] in "[{":
+            if stripped.startswith("﻿"):
+                stripped = stripped[1:]
+            if stripped[:1] in "[{\"":
                 if depth >= _JSON_MAX_DEPTH:
                     add(_STRUCTURED_DATA_LIMIT)
                 else:
                     try:
-                        walk(json.loads(item), depth + 1)
+                        walk(json.loads(stripped), depth + 1)
                     except (json.JSONDecodeError, RecursionError):
                         add(_MALFORMED_STRUCTURED_DATA)
 
@@ -124,7 +127,7 @@ def _structured_text(text: str) -> str | None:
     stripped = text.lstrip()
     if stripped.startswith("﻿"):
         stripped = stripped[1:]
-    return stripped if stripped[:1] in "[{" else None
+    return stripped if stripped[:1] in "[{\"" else None
 
 
 def _decoded_json_codes(text: str) -> tuple[str, ...]:

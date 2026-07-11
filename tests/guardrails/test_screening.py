@@ -19,6 +19,17 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(result.codes, ("BEARER_TOKEN",))
         self.assertEqual(result.sanitized_text, "Authorization: [REDACTED:BEARER_TOKEN]")
 
+    def test_basic_authorization_token_is_blocked_and_redacted(self):
+        text = "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("AUTH_TOKEN",))
+        self.assertEqual(result.codes, ("AUTH_TOKEN",))
+        self.assertEqual(result.sanitized_text, "Authorization: [REDACTED:AUTH_TOKEN]")
+
     def test_cookie_header_is_blocked_and_redacted(self):
         text = "Cookie: session=abc123"
 
@@ -294,6 +305,42 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(verdict.codes, ("BEARER_TOKEN",))
         self.assertEqual(result.codes, ("BEARER_TOKEN",))
         self.assertEqual(result.sanitized_text, "[REDACTED:BEARER_TOKEN]")
+
+    def test_root_json_string_decoded_bearer_is_denied_and_redacted(self):
+        text = '"Authorization: Bearer\\u0020abcdef123456"'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("BEARER_TOKEN",))
+        self.assertEqual(result.codes, ("BEARER_TOKEN",))
+        self.assertEqual(result.sanitized_text, "[REDACTED:BEARER_TOKEN]")
+
+    def test_bom_root_json_string_decoded_cookie_is_denied_and_redacted(self):
+        text = '﻿"Cookie: session\\u003dabc123"'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, ("COOKIE",))
+        self.assertEqual(result.codes, ("COOKIE",))
+        self.assertNotIn("abc123", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, "[REDACTED:COOKIE]")
+
+    def test_malformed_root_json_string_fails_closed_without_raw_input(self):
+        text = '"Authorization: Bearer abcdef123456'
+
+        verdict = sensitivity_gate(text)
+        result = redact(text)
+
+        self.assertFalse(verdict.egress_allowed)
+        self.assertEqual(verdict.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertEqual(result.codes, (MALFORMED_STRUCTURED_DATA,))
+        self.assertNotIn("Bearer", result.sanitized_text)
+        self.assertNotIn("abcdef123456", result.sanitized_text)
+        self.assertEqual(result.sanitized_text, f"[REDACTED:{MALFORMED_STRUCTURED_DATA}]")
 
     def test_leading_bom_json_decoded_bearer_string_is_denied_and_redacted(self):
         text = '﻿{"note":"Bearer\u0020abcdef123"}'

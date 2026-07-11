@@ -145,6 +145,36 @@ class EgressTest(unittest.TestCase):
         self.assertEqual(decision.code, "SENSITIVITY_DENIED")
         self.assertEqual(spy.calls, ())
 
+    def test_root_json_string_bearer_query_denies_before_send(self):
+        inspector = self.inspector()
+        spy = inspector.EgressSpy()
+
+        decision = inspector.dispatch_if_allowed('"Authorization: Bearer\\u0020abcdef123"', (self.segment(),), spy)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+        self.assertEqual(spy.calls, ())
+
+    def test_bom_root_json_string_cookie_query_denies_before_send(self):
+        inspector = self.inspector()
+        spy = inspector.EgressSpy()
+
+        decision = inspector.dispatch_if_allowed('﻿"Cookie: session\\u003dabc123"', (self.segment(),), spy)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+        self.assertEqual(spy.calls, ())
+
+    def test_basic_authorization_query_denies_before_send(self):
+        inspector = self.inspector()
+        spy = inspector.EgressSpy()
+
+        decision = inspector.dispatch_if_allowed("Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==", (self.segment(),), spy)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SENSITIVITY_DENIED")
+        self.assertEqual(spy.calls, ())
+
     def test_property_backed_segment_is_materialized_once_before_screening_and_send(self):
         inspector = self.inspector()
         spy = inspector.EgressSpy()
