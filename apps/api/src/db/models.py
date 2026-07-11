@@ -4,7 +4,19 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import HALFVEC
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    BigInteger,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    CheckConstraint,
+    func
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -18,6 +30,66 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Department(Base):
+    """Bảng phòng ban (departments)."""
+    __tablename__ = "departments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    department_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    department_en: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    department_vi: Mapped[str] = mapped_column(String(128), nullable=False)
+    knowledge_space: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class Role(Base):
+    """Bảng vai trò (roles)."""
+    __tablename__ = "roles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    role_en: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    role_vi: Mapped[str] = mapped_column(String(64), nullable=False)
+    company_knowledge: Mapped[str] = mapped_column(String(32), nullable=False)
+    department_knowledge: Mapped[str] = mapped_column(String(32), nullable=False)
+    executive_knowledge: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class Permission(Base):
+    """Bảng phân quyền tĩnh tham chiếu (permissions)."""
+    __tablename__ = "permissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    classification: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    employee: Mapped[str] = mapped_column(String(32), nullable=False)
+    manager: Mapped[str] = mapped_column(String(32), nullable=False)
+    director: Mapped[str] = mapped_column(String(32), nullable=False)
+    executive: Mapped[str] = mapped_column(String(32), nullable=False)
+    rule_description_vi: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class User(Base):
+    """Bảng nhân viên giả lập (users)."""
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    department_id: Mapped[str] = mapped_column(
+        String(32), 
+        ForeignKey("departments.department_id", onupdate="CASCADE"), 
+        nullable=False, 
+        index=True
+    )
+    role_en: Mapped[str] = mapped_column(
+        String(64), 
+        ForeignKey("roles.role_en", onupdate="CASCADE"), 
+        nullable=False, 
+        index=True
+    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="Active")
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
 class Document(Base, TimestampMixin):
@@ -89,6 +161,26 @@ class Chunk(Base):
     embedding = mapped_column(HALFVEC(512), nullable=True)
 
 
+class PublicEvaluationCase(Base):
+    """Các ca đánh giá kiểm thử chất lượng RAG (public_evaluation_cases)."""
+    __tablename__ = "public_evaluation_cases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    question_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[str] = mapped_column(
+        String(32), 
+        ForeignKey("users.user_id", onupdate="CASCADE"), 
+        nullable=False, 
+        index=True
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_permission: Mapped[str] = mapped_column(String(32), nullable=False)
+    expected_document_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    answer_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
 class Session(Base, TimestampMixin):
     __tablename__ = "sessions"
 
@@ -97,6 +189,27 @@ class Session(Base, TimestampMixin):
     owner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     locale: Mapped[str] = mapped_column(String(32), nullable=False, default="vi-VN")
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class Message(Base):
+    """Các tin nhắn trong phiên chat (messages)."""
+    __tablename__ = "messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        ForeignKey("sessions.id", ondelete="CASCADE"), 
+        nullable=False, 
+        index=True
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    client_request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), unique=True, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("role IN ('USER', 'ASSISTANT', 'SYSTEM')", name="chk_messages_role"),
+    )
 
 
 class AgentRun(Base, TimestampMixin):
@@ -238,6 +351,19 @@ class AuditEvent(Base):
     policy_decision_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditChainState(Base):
+    """Bảng lưu trạng thái chuỗi kiểm toán (audit_chain_state)."""
+    __tablename__ = "audit_chain_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    last_sequence_no: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    last_entry_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="chk_audit_chain_state_single_row"),
+    )
 
 
 class SecurityEvent(Base):

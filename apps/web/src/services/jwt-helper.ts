@@ -42,6 +42,6 @@ export async function generateToken(userId: string, role: string, department: st
   const payloadStr = bytesToBase64Url(encoder.encode(JSON.stringify(payload)));
   const unsignedToken = `${headerStr}.${payloadStr}`;
   
-  const signatureStr = await signHmacSha256(unsignedToken, "change-me-in-production");
+  const signatureStr = await signHmacSha256(unsignedToken, "change-me-in-production-32-bytes-minimum");
   return `${unsignedToken}.${signatureStr}`;
 }
