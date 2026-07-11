@@ -25,6 +25,7 @@ export function PersonaProvider({ children }: { children: ReactNode }) {
 
     const handleAuthChange = () => {
       loadPersona();
+      localStorage.removeItem("tasco-session-id");
       queryClient.clear();
     };
 
@@ -39,6 +40,7 @@ export function PersonaProvider({ children }: { children: ReactNode }) {
 
   const switchPersona = async (id: string) => {
     const next = await identityService.switchPersona(id);
+    localStorage.removeItem("tasco-session-id");
     setPersona(next);
     await queryClient.invalidateQueries();
   };
